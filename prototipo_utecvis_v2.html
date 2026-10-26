@@ -1,0 +1,545 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>UtecVis Prototipo v2</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+<style>
+:root{
+  --page:#f9f9f7; --surface:#fcfcfb; --ink:#0b0b0b; --ink2:#52514e; --muted:#898781;
+  --grid:#e1e0d9; --axis:#c3c2b7; --hull:#ecebe6; --hullstroke:#c3c2b7;
+  --d1:#2a78d6; --d2:#eb6834; --d3:#1baf7a; --d4:#eda100; --d5:#e87ba4; --d6:#008300; --d7:#6250d6;
+  --other:#b5b3ad; --accent:#0b0b0b;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --page:#0d0d0d; --surface:#1a1a19; --ink:#f0efec; --ink2:#c3c2b7; --muted:#898781;
+    --grid:#2c2c2a; --axis:#383835; --hull:#242422; --hullstroke:#4a4a46;
+    --d1:#3987e5; --d2:#d95926; --d3:#199e70; --d4:#c98500; --d5:#d55181; --d6:#008300; --d7:#9085e9;
+    --other:#5d5c57; --accent:#f0efec;
+  }
+}
+:root[data-theme="dark"]{
+  --page:#0d0d0d; --surface:#1a1a19; --ink:#f0efec; --ink2:#c3c2b7; --muted:#898781;
+  --grid:#2c2c2a; --axis:#383835; --hull:#242422; --hullstroke:#4a4a46;
+  --d1:#3987e5; --d2:#d95926; --d3:#199e70; --d4:#c98500; --d5:#d55181; --d6:#008300; --d7:#9085e9;
+  --other:#5d5c57; --accent:#f0efec;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{margin:0;height:100%}
+body{background:var(--page);color:var(--ink);font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+header{padding:14px 20px 10px;display:flex;flex-wrap:wrap;align-items:center;gap:10px 18px;border-bottom:1px solid var(--grid)}
+h1{font-size:18px;margin:0;font-weight:650}
+.badge{font-size:11px;padding:2px 8px;border-radius:99px;border:1px solid var(--axis);color:var(--ink2)}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin-left:auto}
+.tab{border:1px solid var(--axis);background:var(--surface);color:var(--ink);padding:6px 12px;border-radius:8px;cursor:pointer;font:inherit;font-size:13px}
+.tab[aria-selected="true"]{background:var(--ink);color:var(--surface);border-color:var(--ink)}
+.controls{display:flex;flex-wrap:wrap;align-items:center;gap:8px 20px;padding:10px 20px;border-bottom:1px solid var(--grid);font-size:13px;color:var(--ink2)}
+.controls label{display:flex;align-items:center;gap:8px}
+.controls input[type=range]{width:150px}
+button.small{border:1px solid var(--axis);background:var(--surface);color:var(--ink);border-radius:6px;padding:3px 10px;cursor:pointer;font:inherit;font-size:12px}
+.seg{display:inline-flex;border:1px solid var(--axis);border-radius:6px;overflow:hidden}
+.seg button{border:0;background:var(--surface);color:var(--ink2);padding:3px 10px;cursor:pointer;font:inherit;font-size:12px}
+.seg button.on{background:var(--ink);color:var(--surface)}
+main{display:grid;grid-template-columns:1fr 360px;height:calc(100% - 112px);min-height:520px}
+#chart{position:relative;background:var(--surface);overflow:hidden}
+#chart svg{width:100%;height:100%;display:block;cursor:grab}
+aside{border-left:1px solid var(--grid);padding:16px 18px;overflow:auto;background:var(--page)}
+aside h2{font-size:15px;margin:0 0 4px}
+aside h3{font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin:18px 0 6px;font-weight:600}
+aside p{margin:4px 0;color:var(--ink2)}
+.how{font-size:13px}
+ol.rank{margin:0;padding:0;list-style:none}
+ol.rank li{display:grid;grid-template-columns:18px 10px 1fr auto;align-items:center;gap:8px;padding:5px 6px;border-radius:6px;cursor:pointer;font-size:13px}
+ol.rank li:hover,ol.rank li.sel{background:var(--hull)}
+.dot{width:10px;height:10px;border-radius:50%}
+.num{color:var(--ink2);font-variant-numeric:tabular-nums}
+.bar{height:4px;background:var(--axis);border-radius:2px;margin-top:2px}
+.bar>i{display:block;height:100%;background:var(--ink2);border-radius:2px}
+.legend{position:absolute;left:12px;bottom:12px;background:color-mix(in srgb,var(--surface) 88%,transparent);border:1px solid var(--grid);border-radius:8px;padding:8px 10px;font-size:12px;max-width:calc(100% - 24px)}
+.legend .row{display:flex;align-items:center;gap:6px;cursor:pointer;padding:1px 0;user-select:none}
+.legend .row.off{opacity:.35}
+.legend .title{color:var(--muted);font-size:11px;margin-bottom:3px}
+.encoding{position:absolute;right:12px;top:12px;background:color-mix(in srgb,var(--surface) 88%,transparent);border:1px solid var(--grid);border-radius:8px;padding:8px 10px;font-size:12px;color:var(--ink2);max-width:250px}
+.tip{position:absolute;pointer-events:none;background:var(--surface);border:1px solid var(--axis);border-radius:8px;padding:8px 10px;font-size:12px;box-shadow:0 4px 14px rgba(0,0,0,.12);opacity:0;transition:opacity .12s;max-width:240px;z-index:5}
+.tip b{font-size:13px}
+.tip .k{color:var(--muted)}
+.card{background:var(--surface);border:1px solid var(--grid);border-radius:10px;padding:12px;margin-top:6px}
+.card .hd{display:flex;gap:10px;align-items:center}
+.avatar{width:44px;height:44px;border-radius:50%;display:grid;place-items:center;color:#fff;font-weight:650;flex:none;border:3px solid var(--surface);box-shadow:0 0 0 2px var(--axis)}
+.kv{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:10px}
+.kv div{background:var(--page);border-radius:6px;padding:6px}
+.kv b{display:block;font-size:15px;font-variant-numeric:tabular-nums}
+.kv span{font-size:11px;color:var(--muted)}
+.chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
+.chip{font-size:11px;border:1px solid var(--axis);border-radius:99px;padding:1px 7px;color:var(--ink2)}
+.chip.x{border-color:var(--ink);color:var(--ink);font-weight:600}
+table.mini{width:100%;border-collapse:collapse;font-size:12px}
+table.mini td,table.mini th{padding:4px 4px;border-bottom:1px solid var(--grid);text-align:left}
+table.mini th{color:var(--muted);font-weight:500}
+.hint{font-size:12px;color:var(--muted)}
+.score{font-size:26px;font-weight:650;font-variant-numeric:tabular-nums}
+.yearbig{position:absolute;right:16px;bottom:10px;font-size:44px;font-weight:700;color:var(--grid);pointer-events:none;font-variant-numeric:tabular-nums}
+.node text{pointer-events:none;font-size:9px;font-weight:650;fill:#fff;text-anchor:middle;dominant-baseline:central}
+.lbl{pointer-events:none;font-size:11px;fill:var(--ink);paint-order:stroke;stroke:var(--surface);stroke-width:3px;stroke-linejoin:round}
+@media (max-width:860px){
+  main{grid-template-columns:1fr;height:auto}
+  #chart{height:70vh}
+  aside{border-left:0;border-top:1px solid var(--grid)}
+  .tabs{margin-left:0}
+  header,.controls{padding-left:16px;padding-right:16px}
+}
+:root{--d8:#e34948}@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--d8:#e66767}}:root[data-theme="dark"]{--d8:#e66767}
+.deptlbl{font-size:12px;font-weight:650;fill:var(--muted);text-anchor:middle;pointer-events:none;paint-order:stroke;stroke:var(--surface);stroke-width:4px}
+.toggle{border:1px solid var(--axis);background:var(--surface);color:var(--ink);padding:5px 12px;border-radius:8px;cursor:pointer;font:inherit;font-size:13px}
+.toggle.on{background:var(--ink);color:var(--surface);border-color:var(--ink)}
+.enc{display:grid;grid-template-columns:34px 1fr;gap:6px 10px;align-items:center;font-size:12.5px;color:var(--ink2)}
+.enc svg{display:block}
+</style>
+</head>
+<body>
+<header>
+  <h1>UtecVis · red de investigadores</h1>
+  <span class="badge">Prototipo v2 · datos simulados</span>
+  <div class="tabs">
+    <span class="hint" style="align-self:center">Agrupar por</span>
+    <span class="seg" id="groupSeg"><button data-g="dept" class="on">Departamento</button><button data-g="comm">Comunidad</button></span>
+    <button class="toggle on" id="ringBtn" aria-pressed="true">Anillo de puentes</button>
+    <button class="toggle" id="potBtn">Colaboraciones potenciales</button>
+  </div>
+</header>
+<div class="controls">
+  <label><button class="small" id="play">▶ Animar</button> Año <input type="range" id="year" min="2012" max="2026" value="2026"><b id="yearv">2026</b></label>
+  <label id="simCtl" hidden>Umbral de similitud <input type="range" id="thr" min="0.50" max="0.95" step="0.01" value="0.70"><b id="thrv">0.70</b></label>
+  <label id="crossCtl" hidden><input type="checkbox" id="crossOnly" checked> Solo entre departamentos</label>
+  <span class="hint">Arrastra para mover · rueda para zoom · clic en un nodo para ver su red</span>
+</div>
+<main>
+  <div id="chart">
+    <svg id="svg"></svg>
+    <div class="legend" id="legend"></div>
+    <div class="yearbig" id="yearbig">2026</div>
+    <div class="tip" id="tip"></div>
+  </div>
+  <aside id="side"></aside>
+</main>
+<script>
+/* =========================================================
+   1. DATOS SIMULADOS  (en la versión real: nodes.json / edges.json desde Flask)
+   ========================================================= */
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+const rnd=mulberry32(42);
+const randn=()=>{let u=0,v=0;while(!u)u=rnd();while(!v)v=rnd();return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v)};
+const pick=a=>a[Math.floor(rnd()*a.length)];
+
+const DEPTS=[
+ {id:"CCD",name:"Ciencia de la Computación y Datos",n:13},
+ {id:"EYM",name:"Ing. Electrónica y Mecatrónica",n:11},
+ {id:"BIQ",name:"Bioingeniería e Ing. Química",n:9},
+ {id:"CIV",name:"Ingeniería Civil y Ambiental",n:8},
+ {id:"IND",name:"Ingeniería Industrial",n:8},
+ {id:"CIE",name:"Ciencias",n:7},
+ {id:"HUM",name:"Humanidades, Artes y C. Sociales",n:6}];
+const TOPICS=["IA y visión computacional","Robótica y control","Biomateriales y salud","Energía y ambiente","Estructuras y sismología","Optimización y logística","Física y materiales","Sociedad y educación"];
+const PREF={CCD:[0,5],EYM:[1,0],BIQ:[2,3],CIV:[4,3],IND:[5,3],CIE:[6,3],HUM:[7,2]};
+const FIRST=["Ana","Luis","María","Jorge","Rosa","Carlos","Lucía","Diego","Elena","Raúl","Sofía","Miguel","Paula","Andrés","Carmen","Víctor","Julia","Hugo","Teresa","Óscar","Inés","Pablo","Gabriela","Renzo","Milagros","Iván","Claudia","Martín","Patricia","Sergio","Valeria","Fernando"];
+const LAST=["Quispe","Rojas","Huamán","Flores","Mendoza","Vargas","Castillo","Salazar","Paredes","Chávez","Ramos","Torres","Gutiérrez","Ccori","Mamani","Espinoza","Delgado","Rivera","Navarro","Cárdenas","Aguilar","Medina","Ponce","Silva","Ortega","Benavides","Zevallos","León","Valdivia","Arias"];
+const DIM=24, centroids=TOPICS.map(()=>d3.range(DIM).map(randn));
+const used=new Set(), nodes=[];
+DEPTS.forEach(dep=>{for(let k=0;k<dep.n;k++){
+  let name;do{name=pick(FIRST)+" "+pick(LAST)}while(used.has(name));used.add(name);
+  const w=TOPICS.map(()=>0.05+0.1*rnd());
+  const r=rnd(), p=PREF[dep.id];
+  const primary=r<0.72?p[0]:r<0.86?p[1]:Math.floor(rnd()*TOPICS.length);
+  w[primary]+=1;
+  const bridge=rnd()<0.12; // perfiles interdisciplinarios
+  const second=bridge?Math.floor(rnd()*TOPICS.length):pick(p);
+  w[second]+=bridge?0.85:0.35*rnd();
+  const v=d3.range(DIM).map(i=>w.reduce((s,wt,t)=>s+wt*centroids[t][i],0)+0.9*randn());
+  const norm=Math.hypot(...v);
+  const start=2010+Math.floor(rnd()*13);
+  const act=Math.exp(0.6*randn());
+  nodes.push({id:nodes.length,name,dept:dep.id,topicW:w,primary,second,bridge,vec:v.map(x=>x/norm),start,act,
+    edu:pick(["Doctorado","Doctorado","Doctorado","Maestría","Maestría"]),
+    initials:name.split(" ").map(s=>s[0]).join("")});
+}});
+const N=nodes.length;
+const sim=(a,b)=>a.vec.reduce((s,x,i)=>s+x*b.vec[i],0);
+const S=nodes.map(a=>nodes.map(b=>sim(a,b)));
+// aristas de coautoría
+const edges=[];
+for(let i=0;i<N;i++)for(let j=i+1;j<N;j++){
+  const a=nodes[i],b=nodes[j];
+  let p=0.006;
+  if(a.primary===b.primary)p+=0.16;
+  if(a.dept===b.dept)p+=0.07;
+  if(a.bridge||b.bridge)p+=0.05;
+  p*=Math.min(2.2,0.55+0.45*(a.act+b.act));
+  if(rnd()<p){
+    const first=Math.min(2026,Math.max(a.start,b.start)+Math.floor(rnd()*5));
+    const total=1+Math.floor(-Math.log(rnd())*2.6*Math.sqrt(a.act*b.act));
+    edges.push({source:i,target:j,first,total,cross:a.dept!==b.dept});
+  }
+}
+nodes.forEach(n=>{n.solo=Math.round((2026-n.start)*n.act*1.4);n.h=Math.max(1,Math.round(Math.sqrt(n.solo+5)*1.3*n.act**0.4))});
+
+/* =========================================================
+   2. MÉTRICAS DE RED (se recalculan por año)
+   ========================================================= */
+function activeEdges(year){
+  return edges.filter(e=>e.first<=year).map(e=>({...e,w:Math.max(1,Math.round(e.total*(year-e.first+1)/(2026-e.first+1)))}));
+}
+function betweenness(adj){ // Brandes, no ponderado
+  const C=new Array(N).fill(0);
+  for(let s=0;s<N;s++){
+    const St=[],P=Array.from({length:N},()=>[]),sig=new Array(N).fill(0),d=new Array(N).fill(-1);
+    sig[s]=1;d[s]=0;const Q=[s];
+    while(Q.length){const v=Q.shift();St.push(v);for(const w of adj[v].keys()){if(d[w]<0){d[w]=d[v]+1;Q.push(w)}if(d[w]===d[v]+1){sig[w]+=sig[v];P[w].push(v)}}}
+    const del=new Array(N).fill(0);
+    while(St.length){const w=St.pop();for(const v of P[w])del[v]+=sig[v]/sig[w]*(1+del[w]);if(w!==s)C[w]+=del[w]}
+  }
+  const norm=(N-1)*(N-2); // no dirigido: C/2 /((N-1)(N-2)/2)
+  return C.map(c=>c/norm);
+}
+function louvain(adjW){ // adjW: array de Map(vecino->peso)
+  let membership=d3.range(N), A=adjW.map(m=>new Map(m));
+  for(let level=0;level<10;level++){
+    const n=A.length, k=A.map(m=>{let s=0;m.forEach(w=>s+=w);return s});
+    const m2=d3.sum(k); if(m2===0)break;
+    const c=d3.range(n), tot=k.slice(); let moved=false, improved=true, guard=0;
+    const order=d3.shuffle(d3.range(n),mulberry32(level+1));
+    while(improved&&guard++<50){improved=false;
+      for(const i of order){
+        const ci=c[i], wc=new Map();
+        A[i].forEach((w,j)=>{if(j!==i)wc.set(c[j],(wc.get(c[j])||0)+w)});
+        tot[ci]-=k[i];
+        let best=ci,bestG=(wc.get(ci)||0)-tot[ci]*k[i]/m2;
+        wc.forEach((w,cc)=>{const g=w-tot[cc]*k[i]/m2;if(g>bestG+1e-12){bestG=g;best=cc}});
+        tot[best]+=k[i];
+        if(best!==ci){c[i]=best;improved=true;moved=true}
+      }}
+    if(!moved)break;
+    const ids=[...new Set(c)], re=new Map(ids.map((x,i)=>[x,i]));
+    membership=membership.map(x=>re.get(c[x]));
+    const B=ids.map(()=>new Map());
+    A.forEach((m,i)=>m.forEach((w,j)=>{const a=re.get(c[i]),b=re.get(c[j]);B[a].set(b,(B[a].get(b)||0)+w)}));
+    A=B;
+  }
+  return membership;
+}
+function modularity(adjW,comm){
+  let m2=0;const k=adjW.map(m=>{let s=0;m.forEach(w=>s+=w);return s});m2=d3.sum(k);if(!m2)return 0;
+  let Q=0;for(let i=0;i<N;i++)adjW[i].forEach((w,j)=>{if(comm[i]===comm[j])Q+=w});
+  const tot=new Map();k.forEach((x,i)=>tot.set(comm[i],(tot.get(comm[i])||0)+x));
+  let s=0;tot.forEach(t=>s+=(t/m2)**2);return Q/m2-s;
+}
+function nmi(a,b){
+  const n=a.length,ca=d3.rollup(a,v=>v.length,d=>d),cb=d3.rollup(b,v=>v.length,d=>d),cab=d3.rollup(d3.range(n),v=>v.length,i=>a[i]+"|"+b[i]);
+  let I=0;cab.forEach((nij,key)=>{const [x,y]=key.split("|");I+=nij/n*Math.log(nij*n/(ca.get(x)*cb.get(y)))});
+  const H=c=>{let h=0;c.forEach(v=>h-=v/n*Math.log(v/n));return h};
+  const d=(H(ca)+H(cb))/2;return d?I/d:0;
+}
+let M={};
+function computeMetrics(year){
+  const E=activeEdges(year);
+  const adj=nodes.map(()=>new Map());
+  E.forEach(e=>{adj[e.source].set(e.target,e.w);adj[e.target].set(e.source,e.w)});
+  const bc=betweenness(adj);
+  let comm=louvain(adj);
+  // comunidades: ordenar por tamaño, singletons -> "sin comunidad" (-1)
+  const sizes=d3.rollup(comm,v=>v.length,d=>d);
+  const ranked=[...sizes].filter(([,s])=>s>=3).sort((a,b)=>b[1]-a[1]).map(d=>d[0]);
+  const rmap=new Map(ranked.map((c,i)=>[c,i]));
+  comm=comm.map(c=>rmap.has(c)?rmap.get(c):-1);
+  nodes.forEach((n,i)=>{
+    n.deg=adj[i].size;let s=0;adj[i].forEach(w=>s+=w);n.wdeg=s;n.bc=bc[i];n.comm=comm[i];
+    n.pubs=Math.round(n.solo*Math.max(0,(year-n.start+1))/(2026-n.start+1))+s;
+    n.crossDeg=[...adj[i].keys()].filter(j=>nodes[j].dept!==n.dept).length;
+  });
+  const inC=nodes.filter(n=>n.comm>=0);
+  M={E,adj,Q:modularity(adj,comm),nmi:nmi(inC.map(n=>n.dept),inC.map(n=>String(n.comm))),nComm:ranked.length,year};
+}
+
+/* =========================================================
+   3. RENDER — una sola vista; los botones solo cambian posición u opacidad
+   ========================================================= */
+const svg=d3.select("#svg"), root=svg.append("g");
+const gHull=root.append("g"), gDept=root.append("g"), gCo=root.append("g"), gSim=root.append("g"), gNode=root.append("g"), gLbl=root.append("g");
+svg.call(d3.zoom().scaleExtent([0.3,5]).on("zoom",ev=>root.attr("transform",ev.transform)));
+svg.on("click",()=>{state.sel=null;update()});
+const css=v=>getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const deptIdx=id=>DEPTS.findIndex(d=>d.id===id);
+const deptColor=id=>css("--d"+(deptIdx(id)+1));
+const deptName=id=>DEPTS.find(d=>d.id===id).name;
+const state={group:"dept",pot:false,thr:0.7,crossOnly:true,sel:null,hidden:new Set(),year:2026,rank:"w",rings:true};
+const sid=e=>e.source.id??e.source, tid=e=>e.target.id??e.target;
+
+let W=800,H=600;
+function size(){const r=document.getElementById("chart").getBoundingClientRect();W=r.width;H=r.height}
+size();
+
+// Tamaño FIJO: escala anclada al máximo de 2026, no cambia con botones
+computeMetrics(2026);
+const WMAX=d3.max(nodes,n=>n.wdeg)||1;
+const rScale=d3.scaleSqrt().domain([0,WMAX]).range([5,24]);
+const radius=n=>rScale(n.wdeg);
+
+// Anclas de posición
+function deptAnchor(id,k=1){const i=deptIdx(id),a=i/DEPTS.length*2*Math.PI-Math.PI/2;return[W/2+Math.cos(a)*W*0.34*k,H/2+Math.sin(a)*H*0.34*k]}
+function commAnchor(c){const a=c/M.nComm*2*Math.PI-Math.PI/2;return[W/2+Math.cos(a)*Math.min(W,H)*0.30,H/2+Math.sin(a)*Math.min(W,H)*0.30]}
+function anchor(n){
+  if(state.group==="comm")return n.comm>=0?commAnchor(n.comm):deptAnchor(n.dept,1.25);
+  return deptAnchor(n.dept);
+}
+function anchorStrength(n){
+  if(state.group==="comm")return n.comm>=0?0.2:0.08;
+  if(!n.deg)return 0.2;
+  // los que colaboran fuera de su departamento quedan "sueltos" → se ubican entre zonas
+  return 0.26*(1-0.85*n.crossFrac);
+}
+nodes.forEach(n=>{const [x,y]=deptAnchor(n.dept);n.x=x+randn()*25;n.y=y+randn()*25});
+
+const sim2=d3.forceSimulation(nodes)
+  .force("charge",d3.forceManyBody().strength(-60).distanceMax(180))
+  .force("collide",d3.forceCollide(n=>radius(n)+3).iterations(2))
+  .on("tick",ticked);
+
+function setForces(){
+  nodes.forEach(n=>{let c=0;M.adj[n.id].forEach((w,j)=>{if(nodes[j].dept!==n.dept)c+=w});n.crossFrac=n.wdeg?c/n.wdeg:0});
+  const L=M.E.map(e=>({source:sid(e),target:tid(e),w:e.w}));
+  const link=d3.forceLink(L).id(d=>d.id).distance(55).strength(e=>{
+    const a=nodes[e.source.id??e.source],b=nodes[e.target.id??e.target];
+    if(state.group==="comm")return a.comm===b.comm&&a.comm>=0?0.35:0.01;
+    return a.dept===b.dept?0.35:0.07;});
+  sim2.force("link",link)
+    .force("x",d3.forceX(n=>anchor(n)[0]).strength(anchorStrength))
+    .force("y",d3.forceY(n=>anchor(n)[1]).strength(anchorStrength));
+}
+
+function potentialPairs(){
+  const out=[];
+  for(let i=0;i<N;i++)for(let j=i+1;j<N;j++){
+    if(S[i][j]<state.thr||M.adj[i].has(j))continue;
+    const cross=nodes[i].dept!==nodes[j].dept;
+    if(state.crossOnly&&!cross)continue;
+    out.push({source:nodes[i],target:nodes[j],s:S[i][j],cross});
+  }
+  return out.sort((a,b)=>b.s-a.s);
+}
+
+let BCMAX=1, topB=new Set();
+function update(reheat){
+  BCMAX=d3.max(nodes,n=>n.bc)||1e-6;
+  topB=new Set([...nodes].sort((a,b)=>b.bc-a.bc).slice(0,5).filter(n=>n.bc>0).map(n=>n.id));
+  const ringW0=d3.scaleLinear().domain([0.12*BCMAX,BCMAX]).range([1.5,6]).clamp(true),ringW=b=>b<0.12*BCMAX?0:ringW0(b);
+  const sel=state.sel, pairs=state.pot?potentialPairs():[];
+  const nb=new Set();
+  if(sel!=null){nb.add(sel);if(!state.pot)M.adj[sel].forEach((w,j)=>nb.add(j));
+    pairs.forEach(p=>{if(p.source.id===sel)nb.add(p.target.id);if(p.target.id===sel)nb.add(p.source.id)})}
+  const vis=n=>!state.hidden.has(n.dept);
+
+  // --- coautorías (siempre las mismas aristas) ---
+  const maxW=d3.max(M.E,e=>e.w)||1;
+  const co=gCo.selectAll("line").data(M.E,e=>sid(e)+"-"+tid(e));
+  co.exit().transition().duration(300).attr("stroke-opacity",0).remove();
+  co.enter().append("line").attr("stroke-linecap","round").attr("stroke-opacity",0)
+    .merge(co).transition().duration(350)
+    .attr("stroke",e=>e.cross?css("--ink"):css("--axis"))
+    .attr("stroke-width",e=>0.7+3*Math.sqrt(e.w/maxW))
+    .attr("stroke-opacity",e=>{
+      const a=nodes[sid(e)],b=nodes[tid(e)];
+      if(!vis(a)||!vis(b))return 0.03;
+      if(state.pot)return sel!=null&&(a.id===sel||b.id===sel)?0.25:0.07;
+      if(sel!=null)return (a.id===sel||b.id===sel)?0.9:0.04;
+      return e.cross?0.5:0.55;});
+
+  // --- colaboraciones potenciales ---
+  const sScale=d3.scaleLinear().domain([state.thr,1]).range([0.5,1]);
+  const sm=gSim.selectAll("line").data(pairs,p=>p.source.id+"~"+p.target.id);
+  sm.exit().remove();
+  sm.enter().append("line").attr("stroke-dasharray","5 3").attr("stroke-linecap","round")
+    .on("mouseenter",(ev,p)=>showTip(ev,`<b>Colaboración potencial</b><br>${p.source.name} ↔ ${p.target.name}<br><span class="k">Similitud temática</span> ${p.s.toFixed(2)}<br>${p.cross?"Entre departamentos":"Mismo departamento"} · 0 coautorías`))
+    .on("mousemove",moveTip).on("mouseleave",hideTip)
+    .merge(sm).attr("stroke",css("--d8")||"#e34948")
+    .attr("stroke-width",p=>p.cross?2.4:1.5)
+    .attr("stroke-opacity",p=>{if(!vis(p.source)||!vis(p.target))return 0.03;if(sel!=null)return(p.source.id===sel||p.target.id===sel)?1:0.06;return sScale(p.s)});
+
+  // --- etiquetas de zona: departamentos (modo depto) ---
+  const dl=gDept.selectAll("text").data(state.group==="dept"?DEPTS:[],d=>d.id);
+  dl.exit().transition().duration(300).style("opacity",0).remove();
+  dl.enter().append("text").attr("class","deptlbl").style("opacity",0).merge(dl)
+    .text(d=>d.name).each(function(d){const [x,y]=deptAnchor(d.id,1.3);d3.select(this).attr("x",x).attr("y",y)})
+    .transition().duration(400).style("opacity",d=>state.hidden.has(d.id)?0.2:1);
+
+  // --- comunidades (solo modo comunidad) ---
+  const groups=state.group==="comm"?d3.groups(nodes.filter(n=>n.comm>=0&&vis(n)),n=>n.comm):[];
+  const hull=gHull.selectAll("g.h").data(groups,d=>d[0]);
+  hull.exit().remove();
+  const he=hull.enter().append("g").attr("class","h");
+  he.append("path");he.append("text").attr("class","lbl").attr("text-anchor","middle").style("font-weight",650);
+  hull.merge(he).select("path").attr("fill",css("--hull")).attr("stroke",css("--hull")).attr("stroke-width",34).attr("stroke-linejoin","round");
+
+  // --- nodos ---
+  const nd=gNode.selectAll("g.node").data(nodes,n=>n.id);
+  const ne=nd.enter().append("g").attr("class","node").style("cursor","pointer")
+    .call(d3.drag().on("start",(ev,d)=>{if(!ev.active)sim2.alphaTarget(.2).restart();d.fx=d.x;d.fy=d.y})
+      .on("drag",(ev,d)=>{d.fx=ev.x;d.fy=ev.y}).on("end",(ev,d)=>{if(!ev.active)sim2.alphaTarget(0);d.fx=null;d.fy=null}))
+    .on("mouseenter",(ev,d)=>{showTip(ev,nodeTip(d));hoverHi(d.id)})
+    .on("mousemove",moveTip)
+    .on("mouseleave",()=>{hideTip();hoverHi(null)})
+    .on("click",(ev,d)=>{ev.stopPropagation();state.sel=state.sel===d.id?null:d.id;update()});
+  ne.append("circle").attr("class","ring");
+  ne.append("circle").attr("class","body");
+  ne.append("text");
+  const all=nd.merge(ne);
+  all.transition().duration(350).style("opacity",n=>!vis(n)?0.08:(sel==null||nb.has(n.id)?1:0.15));
+  all.select("circle.body").transition().duration(350).attr("r",radius).attr("fill",n=>deptColor(n.dept))
+    .attr("stroke",css("--surface")).attr("stroke-width",2);
+  all.select("circle.ring").transition().duration(350)
+    .attr("r",n=>radius(n)+2+(state.rings?ringW(n.bc)/2:0)).attr("fill","none").attr("stroke",css("--ink"))
+    .attr("stroke-width",n=>n.id===sel?(state.rings?Math.max(2.5,ringW(n.bc)):2.5):(state.rings?ringW(n.bc):0));
+  all.select("text").text(n=>radius(n)>=11?n.initials:"");
+
+  // --- etiquetas: top 5 puentes + selección ---
+  let lab=state.rings?[...nodes].filter(n=>topB.has(n.id)):[];
+  if(state.pot)lab=[...new Set(pairs.slice(0,3).flatMap(p=>[p.source,p.target]))];
+  if(sel!=null)lab=[nodes[sel],...nodes.filter(n=>nb.has(n.id)&&n.id!==sel)].slice(0,12);
+  const lb=gLbl.selectAll("text").data([...new Set(lab.filter(vis))],n=>n.id);
+  lb.exit().remove();
+  lb.enter().append("text").attr("class","lbl").merge(lb).text(n=>n.name);
+
+  if(reheat){setForces();sim2.alpha(reheat).restart()}else ticked();
+  renderSide(pairs);renderLegend();
+}
+function ticked(){
+  gCo.selectAll("line").attr("x1",e=>nodes[sid(e)].x).attr("y1",e=>nodes[sid(e)].y).attr("x2",e=>nodes[tid(e)].x).attr("y2",e=>nodes[tid(e)].y);
+  gSim.selectAll("line").attr("x1",p=>p.source.x).attr("y1",p=>p.source.y).attr("x2",p=>p.target.x).attr("y2",p=>p.target.y);
+  gNode.selectAll("g.node").attr("transform",n=>`translate(${n.x},${n.y})`);
+  gLbl.selectAll("text").attr("x",n=>n.x+radius(n)+6).attr("y",n=>n.y+4);
+  gHull.selectAll("g.h").each(function([c,ms]){
+    const pts=ms.map(n=>[n.x,n.y]);
+    const h=pts.length>=3?d3.polygonHull(pts):null;
+    const d=h?"M"+h.join("L")+"Z":`M${pts[0]}L${pts[pts.length-1]}Z`;
+    d3.select(this).select("path").attr("d",d);
+    d3.select(this).select("text").attr("x",d3.mean(pts,p=>p[0])).attr("y",d3.min(pts,p=>p[1])-28).text("C"+(c+1));
+  });
+}
+function hoverHi(id){
+  if(state.sel!=null||state.pot)return;
+  if(id==null){update();return}
+  gCo.selectAll("line").interrupt().attr("stroke-opacity",e=>(sid(e)===id||tid(e)===id)?0.95:0.05);
+}
+
+/* ---------- tooltip ---------- */
+const tip=document.getElementById("tip");
+function showTip(ev,html){tip.innerHTML=html;tip.style.opacity=1;moveTip(ev)}
+function moveTip(ev){const r=document.getElementById("chart").getBoundingClientRect();let x=ev.clientX-r.left+14,y=ev.clientY-r.top+14;
+  if(x+250>r.width)x-=270;if(y+170>r.height)y-=180;tip.style.left=x+"px";tip.style.top=y+"px"}
+function hideTip(){tip.style.opacity=0}
+function nodeTip(n){
+  return `<b>${n.name}</b><br><span class="k">${deptName(n.dept)}</span><br>
+  Publicaciones compartidas (grado pond.): <b>${n.wdeg}</b><br>
+  Coautores UTEC: <b>${n.deg}</b> · ${n.crossDeg} de otros dptos.<br>
+  Betweenness: <b>${n.bc.toFixed(3)}</b>${topB.has(n.id)?" · <b>top 5 puente</b>":""}<br>
+  Comunidad: <b>${n.comm>=0?"C"+(n.comm+1):"—"}</b> · índice h: <b>${n.h}</b>`;
+}
+
+/* ---------- panel lateral ---------- */
+const sw=(inner)=>`<svg width="34" height="22" viewBox="0 0 34 22">${inner}</svg>`;
+function encodingBlock(){
+  const ink=css("--ink"),ax=css("--axis"),c1=css("--d1"),red=css("--d8")||"#e34948";
+  let h=`<h3>Cómo leer la red</h3><div class="enc">
+   ${sw(`<circle cx="9" cy="11" r="4" fill="${c1}"/><circle cx="25" cy="11" r="8" fill="${c1}"/>`)}<span><b>Tamaño</b> = publicaciones compartidas con colegas UTEC (grado ponderado). No cambia con los botones.</span>
+   ${state.rings?`${sw(`<circle cx="17" cy="11" r="6" fill="${c1}"/><circle cx="17" cy="11" r="9.5" fill="none" stroke="${ink}" stroke-width="2.5"/>`)}<span><b>Anillo</b> = qué tan puente es (betweenness). Más grueso = más caminos pasan por él.</span>`:""}
+   ${sw(`<line x1="2" y1="11" x2="32" y2="11" stroke="${ink}" stroke-width="2.5" stroke-opacity=".6"/>`)}<span><b>Línea oscura</b> = coautoría entre departamentos.</span>
+   ${sw(`<line x1="2" y1="11" x2="32" y2="11" stroke="${ax}" stroke-width="2.5"/>`)}<span><b>Línea clara</b> = coautoría dentro del mismo departamento.</span>`;
+  if(state.pot)h+=`${sw(`<line x1="2" y1="11" x2="32" y2="11" stroke="${red}" stroke-width="2.4" stroke-dasharray="5 3"/>`)}<span><b>Punteada</b> = colaboración potencial: alta similitud temática, sin coautoría.</span>`;
+  h+=`</div><p class="hint" style="margin-top:8px">${state.group==="dept"
+    ?"<b>Posición:</b> cada departamento tiene su zona. Quien colabora mucho fuera de su departamento es atraído por sus coautores y queda <b>entre zonas</b>: así se ven los puentes sin encerrar a nadie."
+    :"<b>Posición:</b> los nodos se reagrupan según las comunidades detectadas (Louvain). El color sigue siendo el departamento: una comunidad multicolor es interdisciplinaria."}</p>`;
+  return h;
+}
+function rankList(items,val,fmt){
+  const mx=d3.max(items,val)||1;
+  return `<ol class="rank">${items.map((n,i)=>`<li data-id="${n.id}" class="${state.sel===n.id?"sel":""}"><span class="num">${i+1}</span><span class="dot" style="background:${deptColor(n.dept)}"></span><span>${n.name}<div class="bar"><i style="width:${val(n)/mx*100}%"></i></div></span><span class="num">${fmt(val(n))}</span></li>`).join("")}</ol>`;
+}
+function renderSide(pairs){
+  let h="";
+  if(state.sel!=null)h+=detailCard(nodes[state.sel]);
+  if(state.pot){
+    h+=`<h3>Colaboraciones potenciales · ${pairs.length} sobre el umbral</h3>`;
+    h+=`<ol class="rank">${pairs.slice(0,10).map((p,i)=>`<li data-pair="${p.source.id},${p.target.id}" style="grid-template-columns:18px 1fr auto"><span class="num">${i+1}</span><span><span class="dot" style="display:inline-block;background:${deptColor(p.source.dept)}"></span> ${p.source.name}<br><span class="dot" style="display:inline-block;background:${deptColor(p.target.dept)}"></span> ${p.target.name}</span><span class="num">${p.s.toFixed(2)}</span></li>`).join("")||"<p class='hint'>Ninguna pareja supera el umbral.</p>"}</ol>`;
+  }
+  if(state.group==="comm"){
+    h+=`<h3>¿Comunidades = departamentos?</h3><div style="display:flex;gap:18px"><div><div class="score">${M.nmi.toFixed(2)}</div><div class="hint">NMI (0 = nada,<br>1 = idénticos)</div></div><div><div class="score">${M.Q.toFixed(2)}</div><div class="hint">Modularidad Q<br>(&gt;0.3 = clara)</div></div></div>`;
+    const rows=d3.groups(nodes.filter(n=>n.comm>=0),n=>n.comm).sort((a,b)=>a[0]-b[0]).map(([c,ms])=>{
+      const by=d3.rollups(ms,v=>v.length,n=>n.dept).sort((a,b)=>b[1]-a[1]);
+      return `<tr><td><b>C${c+1}</b></td><td class="num">${ms.length}</td><td>${by.map(([d,k])=>`<span class="dot" style="display:inline-block;background:${deptColor(d)}"></span> ${d} ${k}`).join(" &nbsp;")}</td><td class="num">${Math.round(by[0][1]/ms.length*100)}%</td></tr>`}).join("");
+    h+=`<table class="mini" style="margin-top:8px"><tr><th></th><th>n</th><th>Departamentos</th><th>Pureza</th></tr>${rows}</table>`;
+  }
+  h+=`<h3 style="display:flex;justify-content:space-between;align-items:center">Ranking ${state.year}<span class="seg" id="rankSeg"><button data-r="w" class="${state.rank==="w"?"on":""}">Prolíficos</button><button data-r="b" class="${state.rank==="b"?"on":""}">Puentes</button></span></h3>`;
+  h+=state.rank==="w"?rankList([...nodes].sort((a,b)=>b.wdeg-a.wdeg).slice(0,8),n=>n.wdeg,v=>v)
+                     :rankList([...nodes].sort((a,b)=>b.bc-a.bc).slice(0,8),n=>n.bc,v=>v.toFixed(3));
+  const cross=M.E.filter(e=>e.cross).length;
+  h+=`<p class="hint" style="margin-top:6px">${cross} de ${M.E.length} pares de coautores (${Math.round(cross/Math.max(1,M.E.length)*100)}%) cruzan departamentos.</p>`;
+  h+=encodingBlock();
+  if(state.sel==null)h+=`<p class="hint" style="margin-top:12px">Clic en un nodo o en un nombre para ver su ficha y su red personal.</p>`;
+  const side=document.getElementById("side");side.innerHTML=h;
+  side.querySelectorAll("li[data-id]").forEach(li=>li.onclick=()=>{state.sel=+li.dataset.id;update()});
+  side.querySelectorAll("#rankSeg button").forEach(b=>b.onclick=()=>{state.rank=b.dataset.r;renderSide(pairs)});
+  side.querySelectorAll("li[data-pair]").forEach(li=>{const [a,b]=li.dataset.pair.split(",").map(Number);
+    li.onmouseenter=()=>{gSim.selectAll("line").attr("stroke-opacity",p=>(p.source.id===a&&p.target.id===b)?1:0.05);gNode.selectAll("g.node").interrupt().style("opacity",n=>n.id===a||n.id===b?1:0.2)};
+    li.onmouseleave=()=>update();
+    li.onclick=()=>{state.sel=a;update()}});
+  const x=side.querySelector("[data-close]");if(x)x.onclick=()=>{state.sel=null;update()};
+}
+function detailCard(n){
+  const top=n.topicW.map((w,i)=>[TOPICS[i],w]).sort((a,b)=>b[1]-a[1]).slice(0,3).map(d=>`<span class="chip">${d[0]}</span>`).join("");
+  const co=[...M.adj[n.id]].sort((a,b)=>b[1]-a[1]).map(([j,w])=>`<span class="chip ${nodes[j].dept!==n.dept?"x":""}">${nodes[j].name} · ${w}</span>`).join("")||"<span class='hint'>Sin coautores UTEC este año</span>";
+  const sug=d3.range(N).filter(j=>j!==n.id&&!M.adj[n.id].has(j)).sort((a,b)=>S[n.id][b]-S[n.id][a]).slice(0,3)
+    .map(j=>`<span class="chip ${nodes[j].dept!==n.dept?"x":""}">${nodes[j].name} · ${S[n.id][j].toFixed(2)}</span>`).join("");
+  return `<h3 style="margin-top:0">Detalle <button class="small" data-close style="float:right;margin-top:-4px">Cerrar</button></h3><div class="card">
+   <div class="hd"><div class="avatar" style="background:${deptColor(n.dept)}">${n.initials}</div><div><b>${n.name}</b><br><span class="hint">${deptName(n.dept)} · ${n.edu}</span></div></div>
+   <div class="kv"><div><b>${n.wdeg}</b><span>grado pond.</span></div><div><b>${n.bc.toFixed(3)}</b><span>betweenness</span></div><div><b>${n.comm>=0?"C"+(n.comm+1):"—"}</b><span>comunidad</span></div>
+   <div><b>${n.deg}</b><span>coautores UTEC</span></div><div><b>${n.crossDeg}</b><span>de otros dptos.</span></div><div><b>${n.h}</b><span>índice h</span></div></div>
+   <h3>Temas principales</h3><div class="chips">${top}</div>
+   <h3>Coautores (n.º publicaciones)</h3><div class="chips">${co}</div>
+   <h3>Más similares sin coautoría</h3><div class="chips">${sug}</div>
+   <p class="hint" style="margin-top:6px">Borde oscuro = otro departamento.</p></div>`;
+}
+function renderLegend(){
+  const lg=document.getElementById("legend");
+  lg.innerHTML=`<div class="title">Departamento · clic para ocultar</div>`+DEPTS.map(d=>`<div class="row ${state.hidden.has(d.id)?"off":""}" data-d="${d.id}"><span class="dot" style="background:${deptColor(d.id)}"></span>${d.name}</div>`).join("");
+  lg.querySelectorAll(".row[data-d]").forEach(r=>r.onclick=()=>{const d=r.dataset.d;state.hidden.has(d)?state.hidden.delete(d):state.hidden.add(d);update()});
+}
+
+/* ---------- controles ---------- */
+document.querySelectorAll("#groupSeg button").forEach(b=>b.onclick=()=>{
+  document.querySelectorAll("#groupSeg button").forEach(x=>x.classList.toggle("on",x===b));
+  state.group=b.dataset.g;update(0.6);
+});
+const ringBtn=document.getElementById("ringBtn");
+ringBtn.onclick=()=>{state.rings=!state.rings;ringBtn.classList.toggle("on",state.rings);ringBtn.setAttribute("aria-pressed",state.rings);update()};
+const potBtn=document.getElementById("potBtn");
+potBtn.onclick=()=>{state.pot=!state.pot;potBtn.classList.toggle("on",state.pot);
+  document.getElementById("simCtl").hidden=!state.pot;document.getElementById("crossCtl").hidden=!state.pot;update()};
+const thr=document.getElementById("thr");thr.oninput=()=>{state.thr=+thr.value;document.getElementById("thrv").textContent=(+thr.value).toFixed(2);update()};
+document.getElementById("crossOnly").onchange=e=>{state.crossOnly=e.target.checked;update()};
+const yr=document.getElementById("year");
+function setYear(y){state.year=y;yr.value=y;document.getElementById("yearv").textContent=y;document.getElementById("yearbig").textContent=y;computeMetrics(y);update(0.35)}
+yr.oninput=()=>setYear(+yr.value);
+let timer=null;const play=document.getElementById("play");
+play.onclick=()=>{
+  if(timer){clearInterval(timer);timer=null;play.textContent="▶ Animar";return}
+  play.textContent="❚❚ Pausa";let y=+yr.value>=2026?2012:+yr.value;setYear(y);
+  timer=setInterval(()=>{y++;if(y>2026){clearInterval(timer);timer=null;play.textContent="▶ Animar";return}setYear(y)},900);
+};
+window.addEventListener("resize",()=>{size();setForces();sim2.alpha(0.3).restart()});
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change",()=>update());
+
+update(1);
+</script>
+</body>
+</html>

@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>UtecVis by Batimix</title>
+<meta name="description" content="Quién colabora con quién en la investigación de UTEC: red de coautoría de 104 docentes e investigadores.">
+<link rel="preload" href="{{ url_for('static', filename='fonts/silkscreen-400.woff2') }}" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+<script>
+  // Tema guardado (si lo hay) antes de pintar, para evitar parpadeo
+  try { const t = localStorage.getItem("utecvis-tema"); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
+</script>
+</head>
+<body>
+<div class="frame">
+
+  <!-- ============ CABECERA ============ -->
+  <header class="masthead">
+    <div class="mast-art" aria-hidden="true">
+      <svg viewBox="0 0 120 120" class="mast-logo">
+        <circle cx="60" cy="60" r="54" class="ml-ring"/>
+        <line x1="34" y1="40" x2="82" y2="34" class="ml-edge"/><line x1="34" y1="40" x2="52" y2="84" class="ml-edge"/>
+        <line x1="82" y1="34" x2="52" y2="84" class="ml-edge ml-cross"/><line x1="82" y1="34" x2="92" y2="76" class="ml-edge"/>
+        <line x1="52" y1="84" x2="92" y2="76" class="ml-pot"/>
+        <circle cx="34" cy="40" r="12" class="ml-n1"/><circle cx="82" cy="34" r="16" class="ml-n2"/>
+        <circle cx="82" cy="34" r="21" class="ml-bridge"/>
+        <circle cx="52" cy="84" r="10" class="ml-n3"/><circle cx="92" cy="76" r="8" class="ml-n4"/>
+      </svg>
+    </div>
+    <div class="mast-title">
+      <h1><span class="px">UtecVis</span> <small>by Batimix</small></h1>
+      <p class="mast-tag px">La red de colaboración de los investigadores</p>
+    </div>
+    <div class="mast-box">
+      <p class="lead">Quién colabora con quién en la investigación de UTEC</p>
+      <dl class="stats" id="stats" aria-live="polite">
+        <div><dt>docentes</dt><dd id="st-docentes">—</dd></div>
+        <div><dt>publicaciones</dt><dd id="st-pubs">—</dd></div>
+        <div><dt>coautorías entre departamentos</dt><dd id="st-cross">—</dd></div>
+        <div><dt>comunidades</dt><dd id="st-comm">—</dd></div>
+      </dl>
+    </div>
+  </header>
+
+  <nav class="topnav" aria-label="Secciones">
+    <div class="navbox">
+      <span class="px navlbl">Navegar</span>
+      <a class="navbtn" href="#red">La red</a>
+      <a class="navbtn" href="#preguntas">Las 4 preguntas</a>
+      <a class="navbtn" href="#hallazgos">Hallazgos</a>
+    </div>
+    <div class="navbox navbox-sm">
+      <span class="px navlbl">Tema</span>
+      <button class="navbtn" id="themeBtn" type="button" aria-label="Cambiar entre tema claro y oscuro">◐ Claro / oscuro</button>
+    </div>
+  </nav>
+
+  <!-- ============ LA RED ============ -->
+  <section class="box" id="red" aria-labelledby="red-h">
+    <h2 class="boxhd" id="red-h"><span class="ico" aria-hidden="true">✶</span> La red de coautoría</h2>
+    <div class="controls" role="toolbar" aria-label="Controles de la red">
+      <div class="ctl">
+        <button class="btn btn-dark" id="playBtn" type="button" aria-pressed="false">▶ Animar</button>
+        <label for="yearRange" class="ctl-lbl">Año</label>
+        <input type="range" id="yearRange" min="2012" max="2026" step="1" value="2026" aria-valuetext="2026">
+        <output id="yearOut" for="yearRange" class="num">2026</output>
+      </div>
+      <div class="ctl" role="group" aria-label="Agrupar por">
+        <span class="ctl-lbl">Agrupar por</span>
+        <span class="seg">
+          <button type="button" data-group="dept" aria-pressed="true">Departamento</button><button type="button" data-group="comm" aria-pressed="false">Comunidad</button>
+        </span>
+      </div>
+      <div class="ctl">
+        <button class="btn toggle" id="ringBtn" type="button" aria-pressed="true">◎ Anillo de puentes</button>
+        <button class="btn toggle" id="potBtn" type="button" aria-pressed="false">┅ Colaboraciones potenciales</button>
+      </div>
+      <div class="ctl" id="potCtl" hidden>
+        <label for="thrRange" class="ctl-lbl">Umbral de similitud</label>
+        <input type="range" id="thrRange" min="0.40" max="0.80" step="0.01" value="0.50">
+        <output id="thrOut" for="thrRange" class="num">0.50</output>
+        <label class="chk"><input type="checkbox" id="crossOnly" checked> Solo entre departamentos</label>
+      </div>
+      <div class="ctl ctl-search">
+        <label for="search" class="ctl-lbl">Buscar</label>
+        <input type="search" id="search" list="names" placeholder="Nombre del docente…" autocomplete="off">
+        <datalist id="names"></datalist>
+      </div>
+    </div>
+
+    <div class="viz">
+      <div class="chart" id="chart">
+        <svg id="svg" role="img" aria-labelledby="svg-title svg-desc">
+          <title id="svg-title">Red de coautoría de los docentes de UTEC</title>
+          <desc id="svg-desc">Cada círculo es un docente; las líneas unen a quienes han publicado juntos. Usa el enlace «Ver datos como tabla» para una versión textual.</desc>
+        </svg>
+        <div class="yearmark num" id="yearMark" aria-hidden="true">2026</div>
+        <div class="legend" id="legend" aria-label="Leyenda de departamentos"></div>
+        <div class="zoomhint" aria-hidden="true">Rueda: zoom · arrastrar: mover · clic: red personal</div>
+        <div class="tip" id="tip" role="tooltip"></div>
+      </div>
+      <aside class="side" id="side" aria-label="Panel de detalle"></aside>
+    </div>
+    <p class="tablelink"><button class="linkbtn" id="tableBtn" type="button" aria-expanded="false" aria-controls="tablaWrap">▤ Ver datos como tabla</button></p>
+    <div id="tablaWrap" class="tablawrap" hidden></div>
+  </section>
+
+  <!-- ============ LAS 4 PREGUNTAS ============ -->
+  <section class="box" id="preguntas" aria-labelledby="preg-h">
+    <h2 class="boxhd" id="preg-h"><span class="ico" aria-hidden="true">?</span> Las 4 preguntas</h2>
+    <p class="boxintro">Cada tarjeta configura la red para responder una pregunta. Haz clic y la vista cambia.</p>
+    <div class="cards">
+      <button class="card" type="button" data-task="t1">
+        <span class="card-tag px">T1</span>
+        <span class="card-body"><b>¿Quiénes colaboran más dentro de UTEC?</b>
+          Tamaño del nodo = publicaciones compartidas con otros docentes UTEC (grado ponderado). El ranking del panel ordena a los más prolíficos.</span>
+      </button>
+      <button class="card" type="button" data-task="t2">
+        <span class="card-tag px">T2</span>
+        <span class="card-body"><b>¿Quiénes son puentes entre departamentos?</b>
+          El anillo oscuro crece con la intermediación (<i>betweenness</i>: cuántos caminos cortos pasan por la persona). Los puentes quedan entre zonas.</span>
+      </button>
+      <button class="card" type="button" data-task="t3">
+        <span class="card-tag px">T3</span>
+        <span class="card-body"><b>¿Los grupos naturales coinciden con los departamentos?</b>
+          Reagrupa la red por comunidades detectadas (Louvain). El color sigue siendo el departamento: una mancha multicolor es interdisciplinaria.</span>
+      </button>
+      <button class="card" type="button" data-task="t4">
+        <span class="card-tag px">T4</span>
+        <span class="card-body"><b>¿Qué colaboraciones nuevas son probables?</b>
+          Líneas punteadas rojas: pares con producción muy parecida (embeddings de títulos y resúmenes) que aún no han publicado juntos.</span>
+      </button>
+    </div>
+  </section>
+
+  <!-- ============ HALLAZGOS ============ -->
+  <section class="box" id="hallazgos" aria-labelledby="hall-h">
+    <h2 class="boxhd" id="hall-h"><span class="ico" aria-hidden="true">★</span> Hallazgos</h2>
+    <ol class="findings" id="findings"></ol>
+  </section>
+
+  <footer class="foot">UtecVis by Batimix · DS5343 Visualización de Datos · UTEC 2026-2</footer>
+</div>
+
+<script src="{{ url_for('static', filename='vendor/d3.v7.9.0.min.js') }}"></script>
+<script>window.UV = { base: "{{ url_for('static', filename='') }}" };</script>
+<script src="{{ url_for('static', filename='js/network.js') }}"></script>
+<script src="{{ url_for('static', filename='js/panel.js') }}"></script>
+<script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html>

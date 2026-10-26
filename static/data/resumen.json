@@ -1,0 +1,56 @@
+{
+ "fecha_datos":"octubre de 2026",
+ "anio_ref":2026,
+ "modelo_embeddings":"intfloat/multilingual-e5-base",
+ "excluir_hiperautoria":true,
+ "n_docentes":104,
+ "n_publicaciones":2479,
+ "n_pubs_hyper":1134,
+ "n_relaciones":2976,
+ "n_aristas":35,
+ "pct_cross":0.4857,
+ "n_comunidades":5,
+ "Q":0.7196,
+ "NMI":0.5619,
+ "ARI":0.298,
+ "n_conectados":35,
+ "n_sin_vector":0,
+ "n_con_foto":102,
+ "n_sin_pubs":24,
+ "validacion":{
+  "corte":2022,
+  "ventana":"2023-2026",
+  "positivos":14,
+  "candidatos":5335,
+  "p10":0.1,
+  "aciertos10":1,
+  "p50":0.04,
+  "aciertos50":2,
+  "base":0.0026,
+  "auc":0.829,
+  "positivos_cross":3,
+  "auc_cross":0.434
+ },
+ "hallazgos":[
+  {
+   "titulo":"La colaboración interna es escasa",
+   "texto":"Solo 35 de los 104 docentes comparten al menos una publicación con otro docente UTEC del portal; hay 35 pares de coautores y 69 personas aisladas. La primera coautoría entre docentes del portal es de 2013."
+  },
+  {
+   "titulo":"Quiénes colaboran más",
+   "texto":"Carmen Elena Flores Barreda encabeza el ranking con 10 publicaciones compartidas con 4 colegas UTEC, seguido de Samuel Charca Mamani, Ruth Canahuire Cabello y José Luis Mantari Laureano."
+  },
+  {
+   "titulo":"Los puentes entre departamentos",
+   "texto":"José Luis Mantari Laureano, Wangdo Kim y Eunice Villicaña Ortiz son los principales puentes: tienen la mayor intermediación (betweenness), es decir, por ellos pasan más caminos cortos entre colegas que por nadie más. 49 % de los pares de coautores cruzan departamentos."
+  },
+  {
+   "titulo":"Las comunidades no calcan los departamentos",
+   "texto":"Louvain encuentra 5 comunidades de 3 o más personas (modularidad Q = 0,72). Su parecido con los departamentos es parcial (NMI = 0,56); la más mezclada, C3, reúne 4 personas de 4 unidades distintas."
+  },
+  {
+   "titulo":"La colaboración potencial más fuerte",
+   "texto":"Carlos Alberto Benedetty Torres (Civil y Ambiental) y Samuel Charca Mamani (Mecánica y Energía) no han publicado juntos, pero su producción es la más parecida entre departamentos distintos (similitud 0,61)."
+  }
+ ]
+}

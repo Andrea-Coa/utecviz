@@ -1,0 +1,9 @@
+-r requirements.txt
+pandas>=2.2
+numpy>=2.0
+networkx>=3.3
+scikit-learn>=1.5
+sentence-transformers>=3.0
+torch>=2.4
+pillow>=10.0
+pytest>=8.0
