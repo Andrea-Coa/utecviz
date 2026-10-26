@@ -20,8 +20,10 @@
     const gZone = root.append("g");
     const gCo = root.append("g");
     const gPot = root.append("g");
+    const gTema = root.append("g");
     const gNode = root.append("g");
     const gLbl = root.append("g");
+    const gStar = root.append("g");      // estrellas de T5 encima de todo, para que ninguna foto las tape
 
     let W = 800, H = 600;
     // dominio fijo al máximo de 2026; el rango solo depende del tamaño del lienzo (no de los botones)
@@ -142,12 +144,15 @@
       if (ctx.state.potential) return sel && touches(sel) ? 0.35 : 0.07;
       if (sel) return touches(sel) ? 0.95 : 0.05;
       if (hov) return touches(hov) ? 0.95 : 0.08;
+      if (ctx.tema) return ctx.tema.edgeKeys.has(e.key) ? 1 : 0.05;
       return e.cross ? 0.75 : 0.9;
     }
+    const enEquipo = (id) => ctx.tema && (ctx.tema.C.has(id) || ctx.tema.puentes.has(id));
     function nodeOpacity(n, sel, nb, hov, hovNb) {
       if (!visible(n.id)) return 0.08;
       if (sel) return nb.has(n.id) ? 1 : 0.15;
       if (hov) return hovNb.has(n.id) ? 1 : 0.35;
+      if (ctx.tema) return enEquipo(n.id) ? 1 : 0.13;
       return 1;
     }
     function potOpacity(p, sel) {
@@ -163,6 +168,7 @@
       const t = (s) => (animate ? s.transition().duration(350) : s.interrupt());
       t(gCo.selectAll("line:not(.exiting)")).attr("stroke-opacity", (e) => edgeOpacity(e, sel, hov));
       t(gPot.selectAll("line")).attr("stroke-opacity", (p) => potOpacity(p, sel));
+      t(gTema.selectAll("line")).attr("stroke-opacity", (l) => (!l.c ? 0.45 : sel ? (l.c.id === sel ? 0.9 : 0.12) : 0.35 + 0.6 * l.c.rel));
       t(gNode.selectAll("g.node")).style("opacity", (n) => nodeOpacity(n, sel, nb, hov, hovNb));
     }
 
@@ -189,6 +195,33 @@
         .on("click", (ev, p) => { ev.stopPropagation(); on.select(p.source); })
         .merge(pt)
         .attr("stroke", pot).attr("stroke-width", (p) => (p.cross ? 2.6 : 1.5));
+
+      // T5: estrella del tema y, si el tema tiene varias facetas, una estrella con etiqueta por faceta en el
+      // centro de sus expertos (sin color: el color ya es el departamento). Líneas de puntos estrella → docente.
+      const tm = ctx.tema;
+      const tl = gTema.selectAll("line").data(tm ? tm.lines : [], (l) => l.key);
+      tl.exit().remove();
+      tl.enter().append("line").attr("stroke-linecap", "round").attr("stroke-opacity", 0)
+        .on("mouseenter", (ev, l) => { if (l.c) showTip(ev, temaTip(l)); })
+        .on("mousemove", moveTip).on("mouseleave", hideTip)
+        .on("click", (ev, l) => { ev.stopPropagation(); if (l.c) on.select(l.c.id); })
+        .merge(tl)
+        .attr("stroke", css("--tema"))
+        .attr("stroke-dasharray", (l) => (l.c ? "1 5" : "6 5"))
+        .attr("stroke-width", (l) => (l.c ? 2 + 3 * l.c.rel : 1.5));
+      const ts = gStar.selectAll("g.star").data(tm ? tm.stars : [], (s) => s.key);
+      ts.exit().remove();
+      const tse = ts.enter().append("g").attr("class", "star")
+        .on("mouseenter", (ev, s) => showTip(ev, starTip(s)))
+        .on("mousemove", moveTip).on("mouseleave", hideTip);
+      tse.append("path");
+      tse.append("text").attr("class", "lbl star-lbl").attr("text-anchor", "middle");
+      const tsa = tse.merge(ts);
+      tsa.select("path").attr("d", (s) => d3.symbol(d3.symbolStar, s.kind === "tema" ? 560 : 260)())
+        .attr("fill", css("--tema")).attr("stroke", css("--canvas")).attr("stroke-width", 2);
+      tsa.select("text").attr("y", (s) => (s.kind === "tema" ? -20 : -14))
+        .classed("faceta-lbl", (s) => s.kind === "faceta")
+        .text((s) => (s.label.length > 34 ? s.label.slice(0, 33) + "…" : s.label));
 
       // nodos (se crean una sola vez; luego solo cambian atributos)
       const nd = gNode.selectAll("g.node").data(ctx.nodes, (n) => n.id);
@@ -233,6 +266,7 @@
       let lab = [];
       if (st.rings && !st.potential) lab = ctx.topB.slice();
       if (st.potential) lab = [...new Set(ctx.pairs.slice(0, 3).flatMap((p) => [p.source, p.target]))];
+      if (tm) lab = [...tm.C, ...tm.puentes];
       if (sel) { const nb = [...neighborhood()].filter((i) => i !== sel); lab = [sel, ...nb].slice(0, 12); }
       lab = lab.filter(visible).map((i) => ctx.byId.get(i));
       const lb = gLbl.selectAll("text").data(lab, (n) => n.id);
@@ -271,6 +305,43 @@
       const k = sp.reduce((b, i) => (Math.abs(i - t.length / 2) < Math.abs(b - t.length / 2) ? i : b));
       return [t.slice(0, k), t.slice(k + 1)];
     }
+    // estrellas de T5: cada faceta junto a sus expertos (centro de gravedad ponderado por cercanía), empujada
+    // hacia afuera del lienzo, donde hay espacio para su etiqueta; se separan si quedan encimadas (comparten
+    // expertos). La del tema va entre las facetas, desplazada hacia el centro del lienzo.
+    function placeStars(tm) {
+      const centroide = (ms) => {
+        const w = (c) => 0.2 + c.rel, sw = d3.sum(ms, w);
+        return [d3.sum(ms, (c) => w(c) * c.n.x) / sw, d3.sum(ms, (c) => w(c) * c.n.y) / sw];
+      };
+      const desde = (x, y, d) => {   // desplaza (x, y) d px en la dirección que se aleja del centro del lienzo
+        const dx = x - cx(), dy = y - cy(), r = Math.hypot(dx, dy) || 1;
+        return [x + (dx / r) * d, y + (dy / r) * d];
+      };
+      const fs = tm.stars.filter((s) => s.kind === "faceta"), centro = tm.stars[0];
+      fs.forEach((s) => { [s.x, s.y] = desde(...centroide(s.members), 60); });
+      if (fs.length) [centro.x, centro.y] = desde(d3.mean(fs, (s) => s.x), d3.mean(fs, (s) => s.y), -110);
+      else [centro.x, centro.y] = centroide(centro.members);
+      // relajación: las estrellas se separan entre sí (sus etiquetas no se enciman), ninguna queda sobre una
+      // foto y todas quedan dentro del lienzo; las tres reglas a la vez, para que una no deshaga a la otra
+      const st = tm.stars;
+      for (let it = 0; it < 80; it++) {
+        for (let i = 0; i < st.length; i++) for (let j = i + 1; j < st.length; j++) {
+          const a = st[i], b = st[j], dx = b.x - a.x || 1, dy = b.y - a.y, d = Math.hypot(dx, dy);
+          const min = a.kind === "tema" || b.kind === "tema" ? 90 : 130;
+          if (d < min) { const k = (min - d) / (2 * d); a.x -= dx * k; a.y -= dy * k; b.x += dx * k; b.y += dy * k; }
+        }
+        for (const s of st) for (const n of ctx.nodes) {
+          const dx = s.x - n.x || 0.5, dy = s.y - n.y, d = Math.hypot(dx, dy), min = radius(n) + 22;
+          if (d < min) { s.x += (dx / d) * (min - d); s.y += (dy / d) * (min - d); }
+        }
+        st.forEach((s) => { s.x = Math.max(80, Math.min(W - 80, s.x)); s.y = Math.max(44, Math.min(H - 12, s.y)); });
+      }
+      gTema.selectAll("line").each(function (l) {
+        const b = l.c ? l.c.n : l.toStar;
+        this.setAttribute("x1", l.from.x); this.setAttribute("y1", l.from.y); this.setAttribute("x2", b.x); this.setAttribute("y2", b.y);
+      });
+      gStar.selectAll("g.star").attr("transform", (s) => `translate(${s.x},${s.y})`);
+    }
     const blob = d3.line().curve(d3.curveCatmullRomClosed.alpha(0.6));
     function ticked() {
       const byId = ctx.byId;
@@ -282,6 +353,7 @@
         const a = byId.get(p.source), b = byId.get(p.target);
         this.setAttribute("x1", a.x); this.setAttribute("y1", a.y); this.setAttribute("x2", b.x); this.setAttribute("y2", b.y);
       });
+      if (ctx.tema) placeStars(ctx.tema);
       gNode.selectAll("g.node").attr("transform", (n) => `translate(${n.x},${n.y})`);
       gLbl.selectAll("text").attr("x", (n) => n.x + radius(n) + 7).attr("y", (n) => n.y + 4);
       gHull.selectAll("g.hull").each(function ([c, ms]) {
@@ -320,7 +392,28 @@
       return `<div class="tip-hd">Colaboración potencial</div><div class="tip-bd">
         <b>${a.nombre}</b> <span class="k">(${a.zona})</span><br>↔ <b>${b.nombre}</b> <span class="k">(${b.zona})</span><br>
         Similitud temática: <b>${UV.dec(p.sim)}</b> · puntaje combinado: <b>${UV.dec(p.score)}</b><br>
-        ${p.cross ? "Entre departamentos" : "Mismo departamento"} · aún sin coautorías</div>`;
+        ${p.cross ? "Entre departamentos" : "Mismo departamento"} · aún sin coautorías
+        ${UV.comunHtml(p) ? `<br>${UV.comunHtml(p)}` : ""}
+        ${p.pubs_cercanas ? `<br><span class="k">Publicaciones más cercanas:</span>${UV.pubsHtml(p, a, b, false)}` : ""}</div>`;
+    }
+
+    const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+    function starTip(s) {
+      const tm = ctx.tema;
+      if (s.kind === "faceta") return `<div class="tip-hd">Faceta: ${esc(s.label)}</div><div class="tip-bd">
+        Destacan: ${s.members.map((c) => `<b>${esc(c.n.corto)}</b>`).join(", ")}</div>`;
+      return `<div class="tip-hd">Tema</div><div class="tip-bd"><b>${esc(tm.q)}</b><br>
+        ${tm.facetas.length ? `${tm.facetas.length} facetas: ${tm.facetas.map((f) => esc(f.nombre)).join(" · ")}<br>` : ""}
+        ${tm.C.size} docentes · ${tm.directas} pares ya publicaron juntos</div>`;
+    }
+    function temaTip(l) {
+      const c = l.c, p = c.pubs[0];
+      return `<div class="tip-hd">${esc(c.n.nombre)}</div><div class="tip-bd">
+        <span class="k">${esc(c.n.departamento)}</span><br>
+        Cercanía al tema: <b>${Math.round(c.rel * 100)} %</b> del máximo<br>
+        ${c.facetas && c.facetas.length && ctx.tema.facetas.length ? `Destaca en: <b>${c.facetas.map((f) => esc(f.nombre)).join(" · ")}</b><br>` : ""}
+        ${p ? `<span class="k">Publicación más cercana${p.y ? " (" + p.y + ")" : ""}:</span> <i>${esc(p.t.length > 110 ? p.t.slice(0, 109) + "…" : p.t)}</i>`
+          : '<span class="k">Sin publicaciones: coincide por su perfil.</span>'}</div>`;
     }
 
     // ---------- API ----------

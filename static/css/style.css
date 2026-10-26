@@ -25,7 +25,7 @@
   /* lienzo de la red */
   --canvas: #ffffff; --edge-in: #cbbfc1; --edge-cross: #2a1d20; --ring: #1d1416;
   --hull: #f6ecee; --hull-edge: #e6d3d6; --zone-label: #8a7b7f; --halo: #ffffff;
-  --potential: #e34948;
+  --potential: #e34948; --tema: #1d1416;
   /* departamentos (paleta validada; el rojo se reserva para "potencial") */
   --c0: #a9a2a4;
   --c1: #2a78d6; --c2: #eb6834; --c3: #1baf7a; --c4: #eda100; --c5: #e87ba4; --c6: #008300; --c7: #6250d6;
@@ -42,7 +42,7 @@
     --line: #3a2327; --line-2: #4d2f34;
     --canvas: #1e1416; --edge-in: #54403f; --edge-cross: #efe2e3; --ring: #f4e9ea;
     --hull: #2a1b1e; --hull-edge: #3e2a2e; --zone-label: #a8949a; --halo: #1e1416;
-    --potential: #ff6b6b;
+    --potential: #ff6b6b; --tema: #f4e9ea;
     --c0: #6d6467;
     --c1: #3987e5; --c2: #d95926; --c3: #199e70; --c4: #c98500; --c5: #d55181; --c6: #008300; --c7: #9085e9;
     --shadow: 0 2px 0 rgba(0, 0, 0, .5);
@@ -58,7 +58,7 @@
   --line: #3a2327; --line-2: #4d2f34;
   --canvas: #1e1416; --edge-in: #54403f; --edge-cross: #efe2e3; --ring: #f4e9ea;
   --hull: #2a1b1e; --hull-edge: #3e2a2e; --zone-label: #a8949a; --halo: #1e1416;
-  --potential: #ff6b6b;
+  --potential: #ff6b6b; --tema: #f4e9ea;
   --c0: #6d6467;
   --c1: #3987e5; --c2: #d95926; --c3: #199e70; --c4: #c98500; --c5: #d55181; --c6: #008300; --c7: #9085e9;
   --shadow: 0 2px 0 rgba(0, 0, 0, .5);
@@ -268,6 +268,11 @@ input[type="search"] {
 .coauthors .xd::after { content: "↔"; margin-left: 4px; font: 700 10px Verdana, sans-serif; padding: 0 3px; background: var(--ink); color: var(--canvas); }
 .coauthors .n { margin-left: auto; color: var(--ink2); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .coauthors ol { margin: 4px 0 2px 18px; padding: 0; font-size: 11px; }
+.coauthors .porque { margin: 1px 0 2px 16px; }
+.coauthors .porque summary { font-size: 11px; color: var(--muted); }
+.pubpar { margin: 3px 0 2px; padding: 0 0 0 14px; font-size: 11px; line-height: 1.35; }
+.pubpar li { margin: 0 0 3px; border: 0; padding: 0; }
+.tip .pubpar { padding-left: 12px; font-size: 11px; }
 .links { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .links a { font-size: 11px; font-weight: 700; }
 
@@ -356,3 +361,16 @@ code { font-size: 11.5px; background: var(--pink); padding: 0 3px; }
 
 .legend:has(#lgToggle[aria-expanded="false"]) { width: auto; }
 .coauthors button { text-align: left; }
+
+/* ---------- T5: tema → equipo ---------- */
+.ctl-tema input[type="search"] { width: 250px; }
+.star { cursor: help; }
+.star-lbl { font-size: 12px; stroke-width: 5px; }
+.tema-cand .bar { margin-top: 2px; }
+.tema-cand details { margin: 2px 0 0 16px; }
+.tema-cand details summary { font-size: 11px; color: var(--muted); cursor: pointer; }
+.tema-sum { margin: 0 0 6px; font-size: 12px; color: var(--ink2); }
+.faceta-lbl { font-size: 11.5px; }
+.cobertura { margin: 4px 0 6px; padding-left: 16px; font-size: 11.5px; color: var(--ink2); }
+.cobertura li { margin-bottom: 2px; }
+.tema-chips { margin: 2px 0 0 16px; }

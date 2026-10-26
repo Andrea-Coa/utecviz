@@ -158,12 +158,39 @@ for a in range(N):
         continue
     orden = [b for b in np.argsort(-np.nan_to_num(S[a], nan=-9)) if b != a and ok[b]][:TOP_VECINOS]
     sel |= {tuple(sorted((a, b))) for b in orden}
+# Evidencia de cada par (para explicarlo en la app): conceptos de la huella en común y el par de
+# publicaciones más cercanas, una de cada persona, sin contar las que firman juntos ni las de hiperautoría.
+pubs_de = {i: [] for i in ids}
+for k, p in enumerate(pubs):
+    if not p["hyper"]:
+        for i in p["ids"]:
+            pubs_de[i].append(k)
+conceptos = {p["id"]: [c.strip() for c in p["conceptos_huella"][:25]] for p in personas}
+
+
+def comunes(ia, ib):
+    rb = {c.lower(): r for r, c in enumerate(conceptos[ib])}
+    par = [(r + rb[c.lower()], c) for r, c in enumerate(conceptos[ia]) if c.lower() in rb]
+    return [c for _, c in sorted(par)[:4]]
+
+
+def pubs_cercanas(ia, ib):
+    ka = [k for k in pubs_de[ia] if ib not in pubs[k]["ids"]]
+    kb = [k for k in pubs_de[ib] if ia not in pubs[k]["ids"]]
+    if not ka or not kb:
+        return None
+    M = E_pub[ka] @ E_pub[kb].T
+    x, y = np.unravel_index(int(M.argmax()), M.shape)
+    return [{"t": pubs[k]["titulo"], "u": pubs[k]["url"], "y": pubs[k]["year"]} for k in (ka[x], kb[y])]
+
+
 pares = []
 for a, b in sorted(sel):
     ia, ib = ids[a], ids[b]
     pares.append({"source": ia, "target": ib, "sim": round(float(S[a, b]), 4),
                   "score_combinado": round(float(SCORE[a, b]), 4), "adamic_adar": round(float(AA[a, b]), 4),
-                  "coautores": (ia, ib) in first, "first_year": first.get((ia, ib))})
+                  "coautores": (ia, ib) in first, "first_year": first.get((ia, ib)),
+                  "comun": comunes(ia, ib), "pubs_cercanas": pubs_cercanas(ia, ib)})
 write_json(pares, PROCESSED / "similitud.json")
 
 tri = S[np.triu_indices(N, 1)]

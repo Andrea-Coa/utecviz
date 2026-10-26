@@ -1,1 +1,6 @@
 flask>=3.0
+# T5 (tema → equipo): el tema escrito se convierte en vector en vivo con intfloat/multilingual-e5-base.
+# Sin estas tres, la app funciona igual y T5 muestra un aviso.
+numpy>=1.24
+sentence-transformers>=3.0
+torch>=2.4

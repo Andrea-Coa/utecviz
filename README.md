@@ -3,21 +3,23 @@
 **Quién colabora con quién en la investigación de UTEC.** Una sola visualización de red (D3 v7) de los 104 docentes e investigadores con perfil en el portal de investigación de UTEC (`cris.utec.edu.pe`), servida con Flask.
 
 - Nodo = docente (con su foto). Arista = al menos una publicación compartida.
-- Cuatro tareas (T1–T4) y una animación temporal 2012→2026.
-- Todo el cálculo pesado (embeddings, métricas, comunidades) se hace **offline** en un pipeline de Python; la app solo sirve archivos.
+- Cinco tareas (T1–T5) y una animación temporal 2012→2026.
+- Todo el cálculo pesado (embeddings, métricas, comunidades) se hace **offline** en un pipeline de Python. Lo único que se calcula en vivo es el vector del tema que escribe el usuario en T5.
 
 ## Cómo correrlo
 
-### App (solo necesita Flask)
+### App
 
 ```bash
 python -m venv .venv
 .venv/Scripts/activate            # Windows  (Linux/macOS: source .venv/bin/activate)
-pip install -r requirements.txt
-flask run                         # http://127.0.0.1:5000
+pip install -r requirements.txt   # Flask + sentence-transformers y torch (para T5)
+flask run                         # http://127.0.0.1:5000  (en macOS, si el 5000 da 403 por AirPlay: flask run --port 5050)
 ```
 
-Los datos ya calculados están en `static/data/`. D3 y la tipografía se sirven en local (`static/vendor/`, `static/fonts/`), así que la página funciona sin internet.
+Los datos ya calculados están en `static/data/`. D3 y la tipografía se sirven en local (`static/vendor/`, `static/fonts/`).
+
+**T5 necesita internet la primera vez**: al arrancar, la app descarga el modelo `intfloat/multilingual-e5-base` (~1 GB, queda en la caché de Hugging Face) y lo carga en segundo plano (1–2 min; luego cada búsqueda tarda ~50 ms). Mientras tanto el panel dice «Buscando…». Sin `sentence-transformers`/`torch` instalados, T1–T4 funcionan igual y T5 muestra un aviso.
 
 ### Pipeline (opcional: regenera `static/data/`)
 
@@ -41,7 +43,7 @@ Los embeddings se cachean en `data/processed/emb_pubs.npy` (por URL) y `emb_perf
 
 ```
 utecviz/
-  app.py  templates/index.html  requirements.txt  requirements-pipeline.txt  run_pipeline.sh
+  app.py  tema.py (T5)  templates/index.html  requirements.txt  requirements-pipeline.txt  run_pipeline.sh
   static/css/style.css  static/js/{main,network,panel}.js  static/vendor/d3.v7.9.0.min.js  static/fonts/
   static/data/   nodes.json edges.json similarity.json metrics_by_year.json departamentos.json resumen.json (+ nodes.csv, edges.csv)
   static/img/fotos/{id}.webp|.jpg     miniaturas 96×96
@@ -64,6 +66,7 @@ Los datos crudos se dejaron en `utec_perfiles/` (su ubicación original) en luga
 | T2 | ¿Quiénes son puentes entre departamentos? | Betweenness (no ponderado, normalizado) + fracción de coautoría fuera del departamento | Anillo oscuro (grosor ∝ betweenness, desde el 12 % del máximo del año) + posición entre zonas + aristas entre departamentos en tinta oscura + ranking «Puentes» |
 | T3 | ¿Las comunidades coinciden con los departamentos? | Louvain, modularidad Q, NMI y ARI comunidad↔departamento, pureza | Botón «Agrupar por: Comunidad»: los nodos se reordenan con transición; manchas C1…Cn; el color sigue siendo el departamento |
 | T4 | ¿Qué colaboraciones nuevas son probables? | Similitud coseno de embeddings en pares sin coautoría (opcional: 0,7·sim + 0,3·Adamic-Adar) | Botón «Colaboraciones potenciales»: coautorías al 7 %, punteadas rojas, umbral y filtro «solo entre departamentos», top 10 en el panel |
+| T5 | Dado un tema, ¿quiénes podrían formar el equipo? | Similitud coseno entre el tema (e5, prefijo `query:`) y las publicaciones y perfiles de cada docente; camino más corto entre candidatos | Campo «Tema» (texto libre o una de 26 habilidades): el tema se descompone en facetas; una estrella con etiqueta por faceta junto a sus expertos y una estrella del tema entre ellas; líneas de puntos (grosor ∝ cercanía); solo se ven el equipo, sus coautorías y los puentes que los unen |
 | ▶ | ¿Cómo evolucionó la red? | Todas las métricas, precalculadas por año 2012–2026 | Slider de año y botón ▶ (900 ms por año), año en marca de agua |
 
 ## Decisiones de diseño
@@ -105,6 +108,8 @@ Solo cambia un par: Diego Milanés y Evgenii Shmanin, que comparten 433 artícul
 
 ## Colaboraciones potenciales (T4)
 
+**Qué tipo de predicción es.** Predecir colaboraciones nuevas es *link prediction* (una arista nueva entre nodos que ya existen), no *node prediction*. Se usan dos señales: una **basada en contenido** (similitud coseno de embeddings: quienes investigan lo mismo) y una **estructural** (Adamic-Adar: coautores en común con pocos contactos). No es un modelo entrenado: con 14 colaboraciones nuevas en 2023–2026 no hay ejemplos suficientes para aprender uno. Por eso se valida como un problema de predicción real, con un corte temporal (ver abajo). T5, en cambio, no predice: recupera a quién sabe de un tema.
+
 - **Texto de cada publicación**: título + resumen; modelo multilingüe `intfloat/multilingual-e5-base` (prefijo `passage:`, 512 tokens). Se eligió frente a `bge-m3` porque tiene la mitad de parámetros (278 M frente a 568 M): en esta CPU las 2479 publicaciones tardaron unos 40 min, una sola vez gracias a la caché. El corpus mezcla inglés (97 %) y español.
 - **Vector de la persona** = 0,75 · promedio ponderado de sus publicaciones + 0,25 · embedding del perfil (perfil profesional + temas de interés + 25 conceptos de la huella), normalizado L2. Peso de cada publicación: `exp(−(2026 − año)/8) · min(1, 10/n_autores)` (recencia y atenuación de equipos grandes). Las 104 personas tienen vector: las 24 sin publicaciones usan solo su perfil.
 - **Similitud**: coseno **tras centrar** los vectores (restar la media). Los modelos e5 dan cosenos comprimidos entre 0,7 y 0,9 para casi cualquier par; centrar devuelve un rango interpretable (mediana −0,02, percentil 99 = 0,49, máximo 0,84). Por eso el slider va de **0,40 a 0,80 (0,50 por defecto)** y no de 0,50 a 0,95 como proponían las instrucciones: con 0,70 solo quedaban 3 pares sin coautoría. Se exportan los pares con similitud ≥ 0,40 más los 10 vecinos de cada persona (656 pares).
@@ -119,6 +124,25 @@ Solo cambia un par: Diego Milanés y Evgenii Shmanin, que comparten 433 artícul
 | Puntaje combinado (todos) | 5335 | 14 | 0,26 % | 10 % (1) | 4 % (2) | 4 % (4) | 0,83 |
 
 En el conjunto de pares, la similitud ordena bien a quienes después colaboran (AUC 0,83; el top 10 rinde unas 38 veces más que el azar). Entre departamentos distintos solo hubo 3 colaboraciones nuevas y la similitud no las anticipó, así que la vista T4 entre departamentos debe leerse como una **pista de afinidad temática**, no como una predicción.
+
+**Por qué se sugiere cada par.** Cada par exportado lleva su evidencia (`comun`, `pubs_cercanas` en `similarity.json`): los conceptos de la huella de Elsevier que comparten y el par de publicaciones más cercanas (una de cada persona, sin contar las que firman juntos ni las de hiperautoría). Se muestran en el tooltip de la línea roja, en la lista de pares y en el «¿Por qué?» de la ficha.
+
+## Equipo para un tema (T5)
+
+- El tema se convierte en vector con el mismo modelo que T4 (prefijo `query:`, como pide e5) y se compara con los embeddings ya calculados de las publicaciones y los perfiles (`data/processed/emb_*.npy`). Código: `tema.py`, ruta `/api/tema?q=…`.
+- **Puntaje de un docente** = 0,75 · media ponderada (0,6 / 0,3 / 0,1) de sus 3 publicaciones más cercanas al tema + 0,25 · similitud con su perfil (mismos pesos que el vector de persona). Quien no tiene publicaciones recibe en el primer término la mediana del grupo; si no, un perfil escrito en español le ganaba por idioma a quien publica sobre el tema. Los pesos 0,6 / 0,3 / 0,1 reemplazaron al promedio plano: con el promedio, Cristian López del Álamo (un paper de EEG) quedaba bajo Aurea Soriano (series multivariadas, sin EEG) incluso en «Señales biomédicas»; con los pesos queda sobre ella y la habilidad Visualización no cambia.
+- **Candidatos**: los que superan en 1,5 desviaciones a la media de los 104 (mínimo 3, máximo 8). El % del panel es la cercanía relativa al más cercano.
+- **La parte de red**: entre cada par de candidatos se busca el camino más corto (máximo 4 saltos) en la red del año. Se cuentan los pares que ya publicaron juntos, se marcan los **puentes** (quien está en el camino sin ser candidato) y los candidatos **sin camino** hasta otro. Es la respuesta de red: ¿el equipo ya existe o hay que presentarlo?
+- Ejemplo: «visualization of brain signals» devuelve a Christian Flores Vega (EEG), Tarrillo y Huamanchahua (Electrónica), y a Soriano, García-Zanabria, Mora y López del Álamo (visualización, Computación). El grupo de Electrónica se une a Wangdo Kim por medio de Eunice Villicaña, pero no existe ningún camino hasta el de Computación: es una colaboración por crear.
+- **Facetas (temas compuestos).** Con un solo vector, una frase como «visualization of brain signals» queda en un punto medio y quien es fuerte en una sola parte se diluye. Por eso el tema se descompone en **habilidades de un catálogo de 26** (`HABILIDADES` en `tema.py`): las que destacan (z ≥ 2 entre las 26) frente a la frase completa o frente a cada trozo separado por conectores («with», «for», «con», «para»…). Un trozo solo cuenta si alguna habilidad lo domina claramente (z ≥ 2,8); así «fibras naturales», ambiguo, no agrega Hidrología ni Biomecánica. Máximo 4 facetas. Los 2–3 expertos de cada faceta (z ≥ 2 entre los 104) se suman a la lista.
+  - Revisión del catálogo contra los datos: cada habilidad devuelve expertos reconocibles (Visualización: Soriano, García-Zanabria; Elementos finitos: Mantari, Benedetty; Hidrología: Rau, Gutiérrez…), salvo «Grafos y redes», porque casi nadie publica sobre eso en el portal.
+  - Ejemplos: «visualization of brain signals» → Señales biomédicas + Visualización, **sin camino corto en la red** entre ambos grupos; «climate change impacts on hydropower energy» → Clima + Energía + Hidrología; «materiales compuestos con fibras naturales» → solo Ensayos de materiales.
+  - **En la red**, cada faceta es una estrella pequeña con su nombre, ubicada junto a sus expertos y empujada hacia afuera del lienzo. Las facetas no se distinguen por color, porque el color ya codifica el departamento y la paleta apta para daltonismo está agotada. Se identifican por etiqueta directa y posición, y la distancia entre estrellas muestra cuán separados están hoy esos grupos.
+  - **Lista única**, ordenada por cercanía al tema completo (los candidatos del tema más los expertos de cada faceta). Cada persona lleva la etiqueta ★ de las facetas en que destaca: z ≥ 2 en esa habilidad, o z ≥ 1,5 y **al menos un título** que mencione sus términos (`TERMINOS` en `tema.py`; el número en la etiqueta). El embedding sola no basta: en «Señales biomédicas», Cristian López del Álamo (títulos con EEG y EMG) y Aurea Soriano (series multivariadas, sin EEG en ningún título) quedan casi empatados (z 1,80 frente a 1,75). Se usa el título y no el resumen porque en los resúmenes los términos aparecen de pasada.
+  - **Panel**: cobertura entre facetas (comparten un experto, coautoría directa, camino de k saltos o sin camino), quién cubre más de una faceta y la lista.
+  - Si se elige una habilidad del catálogo, la búsqueda usa su descripción y no el nombre corto.
+- **Lo que se descartó**: inferir automáticamente qué habilidad «le falta» a cada docente, por co-ocurrencia de habilidades en las publicaciones. La co-ocurrencia recomienda combinaciones habituales (ML + deep learning), no las que faltan (ML + visualización), y en la validación temporal no superó al azar en el conjunto de pares (AUC 0,53). Por eso la habilidad la elige quien busca.
+- Limitación: el corpus está 97 % en inglés y una búsqueda en español favorece un poco a las publicaciones en español. No hay validación cuantitativa: es una herramienta de exploración.
 
 ## Resultados principales (2026)
 

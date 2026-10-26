@@ -9,6 +9,16 @@
   const pct = (v, d = 1) => (v === 0 ? "0 %" : v < 0.001 ? "< 0,1 %" : (v * 100).toFixed(d).replace(".", ",") + " %");
   const dot = (n) => `<span class="dot" style="background:var(--c${n.color})"></span>`;
 
+  // Evidencia de un par potencial: conceptos en común y las dos publicaciones más cercanas (ver 03_embeddings.py).
+  const corta = (t, k = 95) => (t.length > k ? t.slice(0, k - 1).trimEnd() + "…" : t);
+  UV.comunHtml = (p) => (p.comun && p.comun.length ? `En común: <b>${p.comun.map(esc).join(" · ")}</b>` : "");
+  UV.pubsHtml = (p, a, b, links) => {
+    if (!p.pubs_cercanas) return "";
+    const li = (x, n) => `<li><span class="k">${esc(n.corto)}${x.y ? " · " + x.y : ""}:</span> ${links
+      ? `<a href="${esc(x.u)}" target="_blank" rel="noopener">${esc(x.t)}</a>` : `<i>${esc(corta(x.t))}</i>`}</li>`;
+    return `<ul class="pubpar">${li(p.pubs_cercanas[0], a)}${li(p.pubs_cercanas[1], b)}</ul>`;
+  };
+
   function box(title, body, extra = "") {
     return `<section class="pbox"><h3>${title}${extra}</h3><div class="pb">${body}</div></section>`;
   }
@@ -41,9 +51,13 @@
       .sort((a, b) => b.sim - a.sim).slice(0, 3)
       .map((p) => ({ o: ctx.byId.get(p.source === n.id ? p.target : p.source), p }));
     const sugHtml = !n.tiene_vector ? `<p class="hint">Sin publicaciones ni perfil para comparar.</p>`
-      : `<ul class="coauthors">${sug.map(({ o, p }) => `<li><button class="linkbtn" type="button" data-sel="${esc(o.id)}" style="display:flex;gap:6px;align-items:center;width:100%;text-decoration:none;color:var(--ink)">
+      : `<ul class="coauthors">${sug.map(({ o, p }) => {
+          const [pa, pb] = p.source === n.id ? [n, o] : [o, n], ev = UV.comunHtml(p), pubsEv = UV.pubsHtml(p, pa, pb, true);
+          return `<li><button class="linkbtn" type="button" data-sel="${esc(o.id)}" style="display:flex;gap:6px;align-items:center;width:100%;text-decoration:none;color:var(--ink)">
           <span class="dot" style="background:var(--c${o.color})"></span><span class="${o.departamento !== n.departamento ? "xd" : ""}">${esc(o.nombre)}</span>
-          <span class="n">sim. ${UV.dec(p.sim)}</span></button></li>`).join("")}</ul>`;
+          <span class="n">sim. ${UV.dec(p.sim)}</span></button>
+          ${ev || pubsEv ? `<details class="porque"><summary>¿Por qué?</summary>${ev ? `<p class="hint">${ev}</p>` : ""}${pubsEv ? `<p class="hint">Sus publicaciones más cercanas:</p>${pubsEv}` : ""}</details>` : ""}</li>`;
+        }).join("")}</ul>`;
 
     const links = [["ORCID", n.orcid], ["Google Scholar", n.scholar], ["Scopus", n.scopus], ["Perfil CRIS", n.url_perfil]]
       .filter((l) => l[1]).map(([t, u]) => `<a href="${esc(u)}" target="_blank" rel="noopener">${t} ↗</a>`).join("");
@@ -72,7 +86,8 @@
     const lis = P.slice(0, 10).map((p, i) => {
       const a = ctx.byId.get(p.source), b = ctx.byId.get(p.target), v = st.potRank === "score" ? p.score : p.sim;
       return `<li tabindex="0" data-pair="${esc(p.source)}|${esc(p.target)}"><span class="n">${i + 1}</span>
-        <span>${dot(a)} ${esc(a.corto)} <span class="hint">(${esc(a.zona)})</span><br>${dot(b)} ${esc(b.corto)} <span class="hint">(${esc(b.zona)})</span></span>
+        <span>${dot(a)} ${esc(a.corto)} <span class="hint">(${esc(a.zona)})</span><br>${dot(b)} ${esc(b.corto)} <span class="hint">(${esc(b.zona)})</span>
+          ${p.comun && p.comun.length ? `<br><span class="hint">${UV.comunHtml(p)}</span>` : ""}</span>
         <span class="n">${UV.dec(v)}</span></li>`;
     }).join("");
     const body = `<p class="hint">${P.length} pares superan el umbral de ${UV.dec(st.threshold)}${st.crossOnly ? " entre departamentos distintos" : ""} y aún no han publicado juntos (hasta ${ctx.year}).</p>
@@ -80,8 +95,52 @@
         <select id="potRank"><option value="sim"${st.potRank === "sim" ? " selected" : ""}>similitud temática</option>
         <option value="score"${st.potRank === "score" ? " selected" : ""}>puntaje combinado (0,7·sim + 0,3·Adamic-Adar)</option></select></div>
       ${lis ? `<ol class="rank pairs">${lis}</ol>` : `<p class="hint">Ningún par supera el umbral. Bájalo con el control de la barra.</p>`}
-      <p class="hint">Pasa el ratón por un par para verlo en la red; clic para abrir su ficha.</p>`;
+      <p class="hint">Pasa el ratón por un par para verlo en la red y sus publicaciones más cercanas; clic para abrir su ficha. «En común» = conceptos compartidos de la huella digital (Elsevier).</p>`;
     return box("Colaboraciones potenciales", body);
+  }
+
+  // ---------- 2b. Tema → equipo (T5) ----------
+  function equipo(ctx) {
+    const t = ctx.state.tema, tm = ctx.tema;
+    const quitar = `<button class="mini-btn" type="button" data-cleartema>Quitar ✕</button>`;
+    if (t.cargando) return box("Equipo para un tema", `<p class="hint">Buscando docentes cercanos a «${esc(t.q)}»… La primera búsqueda puede tardar mientras se carga el modelo.</p>`, quitar);
+    if (t.error) return box("Equipo para un tema", `<p class="hint">No se pudo buscar el tema: ${esc(t.error)}.<br>
+      Instala las dependencias con <code>pip install -r requirements.txt</code> y reinicia <code>flask run</code>.</p>`, quitar);
+    const nombres = (ids) => ids.map((i) => esc(ctx.byId.get(i).corto)).join(", ");
+    const lista = (cs) => `<ul class="coauthors tema-cand">${cs.map((c) => `<li>
+        <button class="linkbtn" type="button" data-sel="${esc(c.id)}" style="display:flex;gap:6px;align-items:center;width:100%;text-decoration:none;color:var(--ink)">
+          ${dot(c.n)}<span>${esc(c.n.nombre)}<br><span class="hint">${esc(c.n.departamento)}</span></span><span class="n">${Math.round(c.rel * 100)} %</span></button>
+        ${tm.facetas.length && c.facetas.length ? `<div class="chips tema-chips">${c.facetas.map((f) => `<span class="chip" title="${f.pubs
+          ? f.pubs + (f.pubs > 1 ? " títulos la mencionan" : " título la menciona") : "destaca en esta habilidad"}">★ ${esc(f.nombre)}${f.pubs ? ` · ${f.pubs}` : ""}</span>`).join("")}</div>` : ""}
+        ${c.pubs.length ? `<details><summary>Publicaciones más cercanas</summary><ul class="pubpar">${c.pubs.map((p) =>
+          `<li><a href="${esc(p.u)}" target="_blank" rel="noopener">${esc(p.t)}</a>${p.y ? " (" + p.y + ")" : ""}</li>`).join("")}</ul></details>`
+          : `<p class="hint" style="margin-left:16px">Sin publicaciones: coincide por su perfil.</p>`}</li>`).join("")}</ul>`;
+    const equipo = [...tm.C].map((i) => ctx.byId.get(i));
+    const deps = new Set(equipo.map((n) => n.departamento)).size;
+    const red = [
+      tm.directas ? `<b>${tm.directas}</b> ${tm.directas === 1 ? "par ya publicó junto" : "pares ya publicaron juntos"}` : "ninguno ha publicado con otro del equipo",
+      tm.puentes.size ? `podrían presentarlos: <b>${nombres([...tm.puentes])}</b> (camino corto en la red)` : "",
+      tm.aislados.length ? `sin camino corto hasta otro del equipo: ${nombres(tm.aislados)}` : "",
+    ].filter(Boolean).join("; ");
+    const nota = `<p class="hint">% = relativo al más cercano. Puntaje: sus 3 publicaciones más parecidas, pesando más la mejor (0,6 / 0,3 / 0,1; 75 %) y su perfil (25 %), con el modelo de embeddings de T4. Mejor en inglés: el 97 % de las publicaciones lo está.</p>`;
+    if (!tm.facetas.length) {
+      const body = `<p class="tema-sum"><b>${tm.cand.length}</b> docentes de <b>${deps}</b> departamento${deps > 1 ? "s" : ""} con producción cercana a «${esc(tm.q)}». En ${ctx.year}: ${red}.</p>
+        ${lista(tm.cand)}${nota}`;
+      return box("Equipo para un tema", body, quitar);
+    }
+    const enlace = (e) => e.d === 0 ? "comparten un experto" : e.d === 1 ? "ya hay coautoría directa"
+      : e.d < Infinity ? `se conectan a ${e.d} saltos en la red` : "<b>sin camino corto en la red</b> (hay que crear la colaboración)";
+    const cobertura = [
+      ...tm.enlaces.map((e) => `${esc(e.a)} ↔ ${esc(e.b)}: ${enlace(e)}`),
+      tm.multi.length ? `cubre${tm.multi.length > 1 ? "n" : ""} más de una faceta: <b>${nombres(tm.multi)}</b>` : "nadie cubre más de una faceta",
+    ];
+    const body = `<p class="tema-sum">«${esc(tm.q)}» combina <b>${tm.facetas.length} facetas</b>: ${tm.facetas.map((f) => `★ ${esc(f.nombre)}`).join(" · ")}.
+        <b>${tm.C.size}</b> docentes de <b>${deps}</b> departamento${deps > 1 ? "s" : ""}.</p>
+      <ul class="cobertura">${cobertura.map((x) => `<li>${x}</li>`).join("")}</ul>
+      <p class="hint">En ${ctx.year}: ${red}.</p>
+      ${lista(tm.cand)}
+      <p class="hint">Orden = cercanía al tema completo. ★ = faceta en la que destaca: muy fuerte en esa habilidad, o fuerte y con títulos que la mencionan (el número). Facetas = habilidades del catálogo (26) que aparecen en el tema o en sus partes («with», «for», «con», «para»…).</p>${nota}`;
+    return box("Equipo para un tema", body, quitar);
   }
 
   // ---------- 3. Comunidades ----------
@@ -136,6 +195,9 @@
     h += `${sw(`<line x1="2" y1="12" x2="36" y2="12" stroke="${ink}" stroke-width="2.5"/>`)}<span><b>Línea oscura</b> = coautoría entre departamentos. Grosor ∝ √publicaciones.</span>
       ${sw(`<line x1="2" y1="12" x2="36" y2="12" stroke="${lig}" stroke-width="2.5"/>`)}<span><b>Línea clara</b> = coautoría dentro del mismo departamento.</span>`;
     if (st.potential) h += `${sw(`<line x1="2" y1="12" x2="36" y2="12" stroke="${pot}" stroke-width="2.4" stroke-dasharray="6 4"/>`)}<span><b>Punteada roja</b> = colaboración potencial: producción muy parecida y ninguna coautoría.</span>`;
+    if (ctx.tema) h += `${sw(`<line x1="8" y1="12" x2="36" y2="12" stroke="${css("--tema")}" stroke-width="3.5" stroke-linecap="round" stroke-dasharray="1 5"/><path transform="translate(8,12)" d="${d3.symbol(d3.symbolStar, 110)()}" fill="${css("--tema")}"/>`)}<span><b>Estrella</b> = el tema buscado, en el centro de sus candidatos. ${ctx.tema.facetas.length
+      ? "Cada <b>estrella pequeña con nombre</b> es una faceta del tema, ubicada entre sus expertos; la línea a rayas la une al tema. La distancia entre estrellas muestra cuán lejos están hoy esos grupos en la red."
+      : ""} Línea de puntos más gruesa = más cercano. Las coautorías visibles son las que unen al equipo.</span>`;
     h += `</div><p class="hint" style="margin-top:8px">${st.group === "dept"
       ? "<b>Posición:</b> cada departamento tiene su zona. Quien colabora mucho fuera de su departamento es atraído por sus coautores y queda <b>entre zonas</b>: así se ven los puentes."
       : "<b>Posición:</b> los nodos se reagrupan por comunidad (Louvain). El color sigue siendo el departamento: una mancha multicolor es una comunidad interdisciplinaria."}</p>`;
@@ -145,6 +207,7 @@
   UV.renderPanel = function (ctx, on) {
     const st = ctx.state;
     let h = "";
+    if (st.tema) h += equipo(ctx);
     if (st.selected) h += ficha(ctx);
     if (st.potential) h += pares(ctx);
     if (st.group === "comm") h += comunidades(ctx);
@@ -162,6 +225,7 @@
     side.querySelectorAll("[data-sel]").forEach((b) => b.addEventListener("click", () => on.select(b.dataset.sel, true)));
     side.querySelectorAll("[data-rank]").forEach((b) => b.addEventListener("click", () => on.rank(b.dataset.rank)));
     side.querySelectorAll("[data-close]").forEach((b) => b.addEventListener("click", () => on.select(null)));
+    side.querySelectorAll("[data-cleartema]").forEach((b) => b.addEventListener("click", () => on.clearTema()));
     const pr = side.querySelector("#potRank");
     if (pr) pr.addEventListener("change", () => on.potRank(pr.value));
     side.querySelectorAll("li[data-pair]").forEach((li) => {
