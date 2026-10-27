@@ -535,7 +535,37 @@
     function highlightNode(id) { ctx.hover = id; applyStyles(false); }
     function resize() { size(); render(0.3); }
 
+    // ---------- descargar imagen: la vista actual (zoom y filtros incluidos) como PNG ----------
+    // La hoja de estilos y los archivos de fotos no viajan dentro de una imagen SVG: se copian los estilos
+    // calculados en línea y las fotos como data URI antes de pasarla a un canvas.
+    const ESTILOS = ["fill", "fill-opacity", "stroke", "stroke-width", "stroke-opacity", "stroke-dasharray", "stroke-linecap",
+      "stroke-linejoin", "opacity", "font-family", "font-size", "font-weight", "letter-spacing", "text-anchor",
+      "dominant-baseline", "paint-order", "visibility", "display"];
+    const dataURL = (blob) => new Promise((ok) => { const r = new FileReader(); r.onload = () => ok(r.result); r.readAsDataURL(blob); });
+    async function toCanvas(k = 2) {
+      const src = svg.node(), clone = src.cloneNode(true), orig = src.querySelectorAll("*"), copia = clone.querySelectorAll("*");
+      orig.forEach((el, i) => { const cs = getComputedStyle(el); copia[i].setAttribute("style", ESTILOS.map((p) => `${p}:${cs.getPropertyValue(p)}`).join(";")); });
+      clone.querySelectorAll("title, desc").forEach((el) => el.remove());
+      await Promise.all([...clone.querySelectorAll("image")].map(async (im) => {
+        const href = im.getAttribute("href");
+        if (!href || href.startsWith("data:")) return;
+        try { im.setAttribute("href", await dataURL(await (await fetch(href)).blob())); } catch (e) { im.remove(); }
+      }));
+      clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+      clone.setAttribute("width", W); clone.setAttribute("height", H);
+      const url = URL.createObjectURL(new Blob([new XMLSerializer().serializeToString(clone)], { type: "image/svg+xml" }));
+      const img = new Image();
+      await new Promise((ok, ko) => { img.onload = ok; img.onerror = ko; img.src = url; });
+      const cv = document.createElement("canvas");
+      cv.width = W * k; cv.height = H * k;
+      const g = cv.getContext("2d");
+      g.fillStyle = css("--canvas"); g.fillRect(0, 0, cv.width, cv.height);
+      g.drawImage(img, 0, 0, cv.width, cv.height);
+      URL.revokeObjectURL(url);
+      return cv;
+    }
+
     warmStart();
-    return { render, applyStyles, centerOn, resetZoom, highlightPair, highlightNode, resize, sim };
+    return { render, applyStyles, centerOn, resetZoom, highlightPair, highlightNode, resize, toCanvas, sim };
   };
 })();

@@ -185,6 +185,15 @@ input[type="search"] {
 .btn:hover, .seg button:hover { background: var(--pink-3); }
 .btn[aria-pressed="true"], .seg button[aria-pressed="true"] { background: var(--maroon); color: var(--on-maroon); }
 .btn-mini { font-size: 10.5px; padding: 2px 6px; margin-left: 4px; }
+/* «Jerárquico»: variante de Departamento, en rojo; encendido = borde interior claro */
+.btn-hier { background: var(--maroon); color: var(--on-maroon); }
+.btn-hier:hover { background: var(--red-hi); }
+.btn-hier[aria-pressed="true"] { background: var(--red-hi); box-shadow: inset 0 0 0 2px var(--on-maroon); }
+/* pantalla completa y descarga: arriba a la izquierda de la red */
+.chart-tools { position: absolute; left: 10px; top: 8px; z-index: 3; display: flex; gap: 6px; }
+.chart-tools .btn-mini { margin-left: 0; }
+.chart:fullscreen { width: 100vw; height: 100vh; }
+.chart:-webkit-full-screen { width: 100vw; height: 100vh; }
 .btn[hidden] { display: none; }
 .btn-dark { background: var(--maroon); color: var(--on-maroon); }
 .btn-dark:hover { background: var(--red-hi); }
@@ -379,7 +388,8 @@ code { font-size: 11.5px; background: var(--pink); padding: 0 3px; }
 .coauthors button { text-align: left; }
 
 /* ---------- T5: tema → equipo ---------- */
-.ctl-tema input[type="search"] { width: 250px; }
+.ctl-tema input[type="search"] { width: 190px; }
+.ctl-search input[type="search"] { width: 150px; }
 .star { cursor: help; }
 .star-lbl { font-size: 12px; stroke-width: 5px; }
 .tema-cand .bar { margin-top: 2px; }

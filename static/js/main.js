@@ -234,6 +234,32 @@
     document.querySelectorAll("[data-size]").forEach((x) => x.setAttribute("aria-pressed", x.dataset.size === state.size));
     render(0.3);
   }));
+  // pantalla completa (la red con los filtros que estén aplicados) y descarga de la vista como PNG
+  const chartEl = $("#chart"), fullBtn = $("#fullBtn"), pngBtn = $("#pngBtn");
+  const enPantallaCompleta = () => document.fullscreenElement || document.webkitFullscreenElement;
+  fullBtn.addEventListener("click", () => {
+    if (enPantallaCompleta()) (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+    else (chartEl.requestFullscreen || chartEl.webkitRequestFullscreen).call(chartEl);
+  });
+  const alCambiarPantalla = () => {
+    fullBtn.textContent = enPantallaCompleta() ? "✕ Salir de pantalla completa" : "⛶ Pantalla completa";
+    net.resize();
+  };
+  document.addEventListener("fullscreenchange", alCambiarPantalla);
+  document.addEventListener("webkitfullscreenchange", alCambiarPantalla);
+  pngBtn.addEventListener("click", async () => {
+    pngBtn.disabled = true; pngBtn.textContent = "Preparando…";
+    try {
+      const cv = await net.toCanvas(2), g = cv.getContext("2d");
+      g.font = "700 22px Verdana, sans-serif"; g.fillStyle = getComputedStyle(document.documentElement).getPropertyValue("--ink");
+      g.fillText(`UtecVis · ${state.year}${state.tema ? " · Tema: " + state.tema.q : ""}`, 20, cv.height - 20);
+      const a = document.createElement("a");
+      a.download = `utecvis-${state.year}${state.tema ? "-" + state.tema.q.replace(/[^\w]+/g, "-").slice(0, 40) : ""}.png`;
+      a.href = cv.toDataURL("image/png");
+      a.click();
+    } catch (e) { alert("No se pudo generar la imagen."); }
+    pngBtn.disabled = false; pngBtn.textContent = "⤓ Descargar imagen";
+  });
   const ringBtn = $("#ringBtn"), potBtn = $("#potBtn");
   function setRings(v) { state.rings = v; ringBtn.setAttribute("aria-pressed", v); }
   function setPotential(v) {

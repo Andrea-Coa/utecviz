@@ -6,7 +6,7 @@
 <title>UtecVis by Batimix</title>
 <meta name="description" content="Quién colabora con quién en la investigación de UTEC: red de coautoría de 104 docentes e investigadores.">
 <link rel="preload" href="static/fonts/silkscreen-400.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="static/css/style.css?v=1793118901">
+<link rel="stylesheet" href="static/css/style.css?v=1793119818">
 <script>
   // Tema guardado (si lo hay) antes de pintar, para evitar parpadeo
   try { const t = localStorage.getItem("utecvis-tema"); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
@@ -58,7 +58,7 @@
         <span class="seg">
           <button type="button" data-group="dept" aria-pressed="true">Departamento</button><button type="button" data-group="comm" aria-pressed="false">Comunidad</button>
         </span>
-        <button type="button" class="btn toggle btn-mini" id="hierBtn" aria-pressed="false" title="Vista jerárquica: departamentos en sectores de un círculo; las coautorías se agrupan por departamento">◔ Jerárquico</button>
+        <button type="button" class="btn btn-hier btn-mini" id="hierBtn" aria-pressed="false" title="Vista jerárquica: departamentos en sectores de un círculo; las coautorías se agrupan por departamento">◔ Jerárquico</button>
       </div>
       <div class="ctl" role="group" aria-label="Tamaño del nodo">
         <span class="ctl-lbl">Tamaño</span>
@@ -96,6 +96,10 @@
           <title id="svg-title">Red de coautoría de los docentes de UTEC</title>
           <desc id="svg-desc">Cada círculo es un docente; las líneas unen a quienes han publicado juntos. Usa el enlace «Ver datos como tabla» para una versión textual.</desc>
         </svg>
+        <div class="chart-tools">
+          <button class="btn btn-mini" id="fullBtn" type="button" title="Ver la red en pantalla completa, con los filtros aplicados">⛶ Pantalla completa</button>
+          <button class="btn btn-mini" id="pngBtn" type="button" title="Descargar la vista actual de la red como imagen PNG">⤓ Descargar imagen</button>
+        </div>
         <div class="yearmark num" id="yearMark" aria-hidden="true">2026</div>
         <div class="legend" id="legend" aria-label="Leyenda: cómo leer la red y departamentos"></div>
         <div class="zoomhint" aria-hidden="true">Rueda: zoom · arrastrar: mover · clic: red personal · clic en una línea: publicaciones</div>
@@ -151,8 +155,8 @@
 
 <script src="static/vendor/d3.v7.9.0.min.js?v=1793027754"></script>
 <script>window.UV = { base: "static/", api: "https://jgurbillon-utecviz-t5.hf.space/api/tema" };</script>
-<script src="static/js/network.js?v=1793118953"></script>
+<script src="static/js/network.js?v=1793119835"></script>
 <script src="static/js/panel.js?v=1793118953"></script>
-<script src="static/js/main.js?v=1793118953"></script>
+<script src="static/js/main.js?v=1793119835"></script>
 </body>
 </html>
