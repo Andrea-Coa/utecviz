@@ -7,6 +7,7 @@
   UV.dec = (v, d = 2) => (v == null ? "—" : Number(v).toFixed(d).replace(".", ","));
   const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
   const R_MIN = 8, R_MAX = 30;          // radio del nodo (px): escala sqrt con dominio fijo al máximo de 2026
+  const GAP = 7, CHARGE = -85;          // separación mínima entre fotos (px) y repulsión: red más holgada
   const LEGEND_H = 0;                   // la leyenda flota a la izquierda; se reserva margen en el layout
 
   UV.createNetwork = function (ctx, on) {
@@ -20,6 +21,7 @@
     const gHull = root.append("g").attr("class", "hulls");
     const gZone = root.append("g");
     const gCo = root.append("g");
+    const gCoHit = root.append("g");   // franjas invisibles sobre las coautorías: hover y clic
     const gPot = root.append("g");
     const gTema = root.append("g");
     const gNode = root.append("g");
@@ -130,16 +132,16 @@
     }
     function anchorStrength(n) {
       if (isHier()) return 0.3;
-      if (ctx.state.group === "comm") return n.m.comm >= 0 ? 0.2 : 0.08;
-      if (!n.m.degree) return 0.2;
+      if (ctx.state.group === "comm") return n.m.comm >= 0 ? 0.16 : 0.07;
+      if (!n.m.degree) return 0.16;
       // quien colabora fuera de su departamento queda "suelto" y sus coautores lo llevan entre zonas
-      return 0.26 * (1 - 0.85 * n.m.cross_frac);
+      return 0.2 * (1 - 0.85 * n.m.cross_frac);
     }
 
     // ---------- simulación ----------
     const sim = d3.forceSimulation(ctx.nodes)
-      .force("charge", d3.forceManyBody().strength(-60).distanceMax(180))
-      .force("collide", d3.forceCollide((n) => radius(n) + 3).iterations(2))
+      .force("charge", d3.forceManyBody().strength(CHARGE).distanceMax(200))
+      .force("collide", d3.forceCollide((n) => radius(n) + GAP).iterations(4))
       .force("bounds", () => {   // mantiene los nodos dentro del lienzo
         for (const n of ctx.nodes) {
           const r = radius(n) + 4;
@@ -156,7 +158,7 @@
       links = ctx.active.map((e) => ({ source: e.source, target: e.target, cross: e.cross, key: e.key }));
       const byId = ctx.byId;
       // en la vista jerárquica las posiciones son fijas: sin repulsión, enlaces ni colisión
-      sim.force("charge").strength(isHier() ? 0 : -60);
+      sim.force("charge").strength(isHier() ? 0 : CHARGE);
       sim.force("link", d3.forceLink(links).id((d) => d.id).distance(55).strength((l) => {
         if (isHier()) return 0;
         const a = byId.get(l.source.id || l.source), b = byId.get(l.target.id || l.target);
@@ -165,7 +167,7 @@
       }));
       sim.force("x", d3.forceX((n) => anchor(n)[0]).strength(anchorStrength));
       sim.force("y", d3.forceY((n) => anchor(n)[1]).strength(anchorStrength));
-      sim.force("collide").radius((n) => (isHier() ? 0 : radius(n) + 3));
+      sim.force("collide").radius((n) => (isHier() ? 0 : radius(n) + GAP));
     }
 
     function warmStart() {
@@ -243,6 +245,13 @@
         .merge(co)
         .attr("stroke", (e) => (e.cross ? ink : light))
         .attr("stroke-width", (e) => 1 + 4 * Math.sqrt(e.w / wmax));
+      // coautorías: tooltip con las publicaciones en conjunto; clic → todas, con enlaces, en el panel
+      const hit = gCoHit.selectAll("path").data(ctx.active, (e) => e.key);
+      hit.exit().remove();
+      hit.enter().append("path").attr("fill", "none").attr("stroke", "transparent").attr("stroke-width", 10).style("cursor", "pointer")
+        .on("mouseenter", (ev, e) => showTip(ev, edgeTip(e)))
+        .on("mousemove", moveTip).on("mouseleave", hideTip)
+        .on("click", (ev, e) => { ev.stopPropagation(); hideTip(); on.edge(e.key); });
 
       // colaboraciones potenciales (solo con el botón activo)
       const pt = gPot.selectAll("path").data(st.potential ? ctx.pairs : [], (p) => p.key);
@@ -439,6 +448,7 @@
     function ticked() {
       const byId = ctx.byId;
       gCo.selectAll("path").attr("d", (e) => edgePath(byId.get(e.source), byId.get(e.target)));
+      gCoHit.selectAll("path").attr("d", (e) => edgePath(byId.get(e.source), byId.get(e.target)));
       gPot.selectAll("path").attr("d", (p) => edgePath(byId.get(p.source), byId.get(p.target)));
       if (ctx.tema) placeStars(ctx.tema);
       gNode.selectAll("g.node").attr("transform", (n) => `translate(${n.x},${n.y})`);
@@ -473,6 +483,13 @@
         Coautores UTEC: <b>${m.degree}</b> · ${m.cross_degree} de otros dptos.<br>
         Qué tan puente es (betweenness): <b>${fmtBC(m.bc)}</b>${top ? '<span class="tag">TOP 5 PUENTE</span>' : ""}<br>
         Comunidad: <b>${m.comm >= 0 ? "C" + m.comm : "—"}</b> · índice h: <b>${n.indice_h ?? "—"}</b></div>`;
+    }
+    function edgeTip(e) {
+      const a = ctx.byId.get(e.source), b = ctx.byId.get(e.target), ps = UV.pubsEnConjunto(e, ctx.year);
+      return `<div class="tip-hd">${esc(a.corto)} ↔ ${esc(b.corto)}</div><div class="tip-bd">
+        <b>${ps.length}</b> ${ps.length === 1 ? "publicación" : "publicaciones"} en conjunto hasta ${ctx.year}
+        <ul class="pubpar">${ps.slice(0, 5).map((p) => `<li><i>${esc(p.titulo)}</i> (${p.anio ?? "s/f"})</li>`).join("")}</ul>
+        <span class="k">${ps.length > 5 ? `y ${ps.length - 5} más · ` : ""}clic: ver con enlaces</span></div>`;
     }
     function potTip(p) {
       const a = ctx.byId.get(p.source), b = ctx.byId.get(p.target);

@@ -43,6 +43,21 @@
       ${hyper ? `<p class="hint">${hyper} con más de 50 autores (colaboraciones masivas; no cuentan para la red).</p>` : ""}`;
   }
 
+  // ---------- Coautoría (clic en una línea): publicaciones en conjunto hasta el año elegido ----------
+  UV.pubsEnConjunto = (e, Y) => (e.pubs || []).filter((p) => p.anio == null || p.anio <= Y)
+    .sort((x, y) => (y.anio ?? 0) - (x.anio ?? 0));
+  function coautoria(ctx) {
+    const e = ctx.active.find((x) => x.key === ctx.state.edge);
+    if (!e) return "";
+    const a = ctx.byId.get(e.source), b = ctx.byId.get(e.target), ps = UV.pubsEnConjunto(e, ctx.year);
+    const li = (p) => `<li>${p.url ? `<a href="${esc(p.url)}" target="_blank" rel="noopener">${esc(p.titulo)}</a>` : esc(p.titulo)} (${p.anio ?? "s/f"})</li>`;
+    const body = `<p><button class="linkbtn" type="button" data-sel="${esc(a.id)}">${esc(a.nombre)}</button> ↔
+      <button class="linkbtn" type="button" data-sel="${esc(b.id)}">${esc(b.nombre)}</button></p>
+      <p class="hint">${e.cross ? "Entre departamentos" : "Mismo departamento"} · ${ps.length} ${ps.length === 1 ? "publicación" : "publicaciones"} en conjunto hasta ${ctx.year}</p>
+      <ul class="pubpar">${ps.map(li).join("")}</ul>`;
+    return box("Publicaciones en conjunto", body, `<button class="mini-btn" type="button" data-close>Cerrar ✕</button>`);
+  }
+
   // ---------- 1. Ficha ----------
   function ficha(ctx) {
     const n = ctx.byId.get(ctx.state.selected), m = n.m, Y = ctx.year;
@@ -231,6 +246,7 @@
     const st = ctx.state;
     let h = "";
     if (st.tema) h += equipo(ctx);
+    if (st.edge) h += coautoria(ctx);
     if (st.selected) h += ficha(ctx);
     if (st.potential) h += pares(ctx);
     if (st.group === "comm") h += comunidades(ctx);

@@ -184,6 +184,8 @@ input[type="search"] {
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .btn, :root:not([data-theme="light"]) .seg button { color: var(--ink); } }
 .btn:hover, .seg button:hover { background: var(--pink-3); }
 .btn[aria-pressed="true"], .seg button[aria-pressed="true"] { background: var(--maroon); color: var(--on-maroon); }
+.btn-mini { font-size: 10.5px; padding: 2px 6px; margin-left: 4px; }
+.btn[hidden] { display: none; }
 .btn-dark { background: var(--maroon); color: var(--on-maroon); }
 .btn-dark:hover { background: var(--red-hi); }
 .seg { display: inline-flex; }

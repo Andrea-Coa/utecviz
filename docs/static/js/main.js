@@ -17,7 +17,7 @@
   // ---------- estado centralizado ----------
   const state = {
     year: Y_MAX, group: "dept", size: "wdeg", rings: true, potential: false, threshold: 0.50, crossOnly: true,
-    selected: null, hiddenZones: new Set(), rankMode: "w", potRank: "sim",
+    selected: null, edge: null, hiddenZones: new Set(), rankMode: "w", potRank: "sim",
     tema: null,   // T5: {q, cargando} | {q, error} | {q, candidatos} (respuesta de /api/tema)
   };
 
@@ -140,10 +140,11 @@
   setYearData(Y_MAX);
   const handlers = {
     select(id, center) {
-      state.selected = id;
+      state.selected = id; state.edge = null;
       render(0);
       if (id && center) net.centerOn(id);
     },
+    edge(key) { state.edge = key; state.selected = null; render(0); },   // clic en una coautoría
     rank(m) { state.rankMode = m; renderPanel(); },
     potRank(m) { state.potRank = m; computePairs(); render(0); },
     hoverPair(a, b) { if (a) net.highlightPair(a, b); else net.applyStyles(false); },
@@ -220,9 +221,11 @@
   play.addEventListener("click", () => (timer ? stop() : start()));
 
   document.querySelectorAll("[data-group]").forEach((b) => b.addEventListener("click", () => setGroup(b.dataset.group)));
+  // «Jerárquico» es una variante de «Departamento»: botón aparte, solo visible con Departamento
+  const hierBtn = $("#hierBtn");
+  hierBtn.addEventListener("click", () => setGroup(state.group === "hier" ? "dept" : "hier"));
   function setGroup(g) {
-    state.group = g;
-    document.querySelectorAll("[data-group]").forEach((x) => x.setAttribute("aria-pressed", x.dataset.group === g));
+    setGroupSilently(g);
     render(0.6);
   }
   // tamaño del nodo: contribución (grado ponderado, T1) o calidad (índice h, T1b)
@@ -367,7 +370,10 @@
   }));
   function setGroupSilently(g) {
     state.group = g;
-    document.querySelectorAll("[data-group]").forEach((x) => x.setAttribute("aria-pressed", x.dataset.group === g));
+    const seg = g === "hier" ? "dept" : g;
+    document.querySelectorAll("[data-group]").forEach((x) => x.setAttribute("aria-pressed", x.dataset.group === seg));
+    hierBtn.setAttribute("aria-pressed", g === "hier");
+    hierBtn.hidden = g === "comm";
   }
 
   let rz = null;
