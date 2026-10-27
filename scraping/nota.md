@@ -1,0 +1,1 @@
+El scraping original fue hecho con Claude Code (extensión en Chrome). Este es un script alternativo.
