@@ -23,12 +23,12 @@ Los datos ya calculados están en `static/data/`. D3 y la tipografía se sirven 
 
 ### Publicar en GitHub Pages (con T5 en Hugging Face Spaces)
 
-GitHub Pages solo sirve archivos: T1–T4 funcionan tal cual, pero T5 necesita ejecutar el modelo. Por eso la página va en Pages y la API de T5 en un **Space de Hugging Face** (gratis, Docker). No hay llaves ni secretos: el Space corre `tema.py` con el modelo descargado en su imagen. Tiene CORS limitado a `andrea-coa.github.io`, un máximo de 30 búsquedas por minuto por IP y temas de hasta 300 caracteres.
+GitHub Pages solo sirve archivos: T1–T4 funcionan tal cual, pero T5 necesita ejecutar el modelo. Por eso la página va en Pages y la API de T5 en un **Space de Hugging Face** (gratis, SDK Gradio: una app de Gradio es un servidor FastAPI, al que `deploy/space/app.py` le agrega la ruta `/api/tema`). No hay llaves ni secretos: el Space corre `tema.py` y descarga el modelo al arrancar. Tiene CORS limitado a `andrea-coa.github.io`, un máximo de 30 búsquedas por minuto por IP y temas de hasta 300 caracteres.
 
 ```bash
 python deploy/precalcular_t5.py                 # respaldo: static/data/tema_precalc.json
 python deploy/preparar_space.py                 # dist/space/: carpeta para subir al Space
-# (subir dist/space/ al Space de Hugging Face, SDK Docker)
+# (subir dist/space/ al Space de Hugging Face, SDK Gradio)
 python deploy/build_pages.py --api https://<usuario>-<space>.hf.space/api/tema   # docs/
 ```
 
