@@ -15,10 +15,11 @@
 <body>
 <div class="frame">
 
-  <!-- ============ CABECERA ============ -->
-  <header class="masthead">
-    <div class="mast-art" aria-hidden="true">
-      <svg viewBox="0 0 120 120" class="mast-logo">
+  <!-- ============ APP: barra lateral (marca, cifras, detalle) + la red ============ -->
+  <div class="app" id="app">
+    <aside class="sidebar" id="sidebar" aria-label="Resumen y detalle">
+      <header class="brand">
+        <svg viewBox="0 0 120 120" class="brand-logo" aria-hidden="true">
         <circle cx="60" cy="60" r="54" class="ml-ring"/>
         <line x1="34" y1="40" x2="82" y2="34" class="ml-edge"/><line x1="34" y1="40" x2="52" y2="84" class="ml-edge"/>
         <line x1="82" y1="34" x2="52" y2="84" class="ml-edge ml-cross"/><line x1="82" y1="34" x2="92" y2="76" class="ml-edge"/>
@@ -27,38 +28,29 @@
         <circle cx="82" cy="34" r="21" class="ml-bridge"/>
         <circle cx="52" cy="84" r="10" class="ml-n3"/><circle cx="92" cy="76" r="8" class="ml-n4"/>
       </svg>
-    </div>
-    <div class="mast-title">
-      <h1><span class="px">UtecVis</span> <small>by Batimix</small></h1>
-      <p class="mast-tag px">La red de colaboración de los investigadores</p>
-    </div>
-    <div class="mast-box">
-      <p class="lead">Quién colabora con quién en la investigación de UTEC</p>
-      <dl class="stats" id="stats" aria-live="polite">
+        <div class="brand-txt">
+          <h1 class="px">UtecVis</h1>
+          <p class="brand-by">by Batimix</p>
+          <p class="brand-tag px">La red de colaboración de los investigadores</p>
+        </div>
+      </header>
+      <dl class="stats kpis" id="stats" aria-label="La red en cifras" aria-live="polite">
         <div><dt>docentes</dt><dd id="st-docentes">—</dd></div>
         <div><dt>publicaciones</dt><dd id="st-pubs">—</dd></div>
-        <div><dt>coautorías entre departamentos</dt><dd id="st-cross">—</dd></div>
+        <div title="Coautorías entre departamentos"><dt>entre dptos.</dt><dd id="st-cross">—</dd></div>
         <div><dt>comunidades</dt><dd id="st-comm">—</dd></div>
       </dl>
-    </div>
-  </header>
+      <nav class="sidenav" aria-label="Secciones">
+        <a class="navbtn" href="#preguntas">Las 5 preguntas</a>
+        <a class="navbtn" href="#hallazgos">Hallazgos</a>
+        <button class="navbtn" id="themeBtn" type="button" aria-label="Cambiar entre tema claro y oscuro" title="Claro / oscuro">◐</button>
+      </nav>
+      <div class="side" id="side" aria-label="Panel de detalle"></div>
+    </aside>
+    <button class="side-toggle" id="sideToggle" type="button" aria-controls="sidebar" aria-expanded="true" title="Ocultar el panel">‹</button>
 
-  <nav class="topnav" aria-label="Secciones">
-    <div class="navbox">
-      <span class="px navlbl">Navegar</span>
-      <a class="navbtn" href="#red">La red</a>
-      <a class="navbtn" href="#preguntas">Las 5 preguntas</a>
-      <a class="navbtn" href="#hallazgos">Hallazgos</a>
-    </div>
-    <div class="navbox navbox-sm">
-      <span class="px navlbl">Tema</span>
-      <button class="navbtn" id="themeBtn" type="button" aria-label="Cambiar entre tema claro y oscuro">◐ Claro / oscuro</button>
-    </div>
-  </nav>
-
-  <!-- ============ LA RED ============ -->
-  <section class="box" id="red" aria-labelledby="red-h">
-    <h2 class="boxhd" id="red-h"><span class="ico" aria-hidden="true">✶</span> La red de coautoría</h2>
+    <main class="stage" id="red" aria-labelledby="red-h">
+      <h2 class="sr-only" id="red-h">La red de coautoría</h2>
     <div class="controls" role="toolbar" aria-label="Controles de la red">
       <div class="ctl">
         <button class="btn btn-dark" id="playBtn" type="button" aria-pressed="false">▶ Animar</button>
@@ -87,6 +79,7 @@
         <input type="search" id="temaInput" list="habilidades" placeholder="Tema libre o una habilidad de la lista" autocomplete="off" maxlength="300">
         <datalist id="habilidades">{% for h in habilidades %}<option value="{{ h }}">{% endfor %}</datalist>
         <button class="btn" id="temaBtn" type="submit">✦ Armar equipo</button>
+        <button class="btn" id="temaClear" type="button" hidden>✕ Limpiar</button>
       </form>
       <div class="ctl ctl-search">
         <label for="search" class="ctl-lbl">Buscar</label>
@@ -95,22 +88,20 @@
       </div>
     </div>
 
-    <div class="viz">
       <div class="chart" id="chart">
         <svg id="svg" role="img" aria-labelledby="svg-title svg-desc">
           <title id="svg-title">Red de coautoría de los docentes de UTEC</title>
           <desc id="svg-desc">Cada círculo es un docente; las líneas unen a quienes han publicado juntos. Usa el enlace «Ver datos como tabla» para una versión textual.</desc>
         </svg>
         <div class="yearmark num" id="yearMark" aria-hidden="true">2026</div>
-        <div class="legend" id="legend" aria-label="Leyenda de departamentos"></div>
+        <div class="legend" id="legend" aria-label="Leyenda: cómo leer la red y departamentos"></div>
         <div class="zoomhint" aria-hidden="true">Rueda: zoom · arrastrar: mover · clic: red personal</div>
         <div class="tip" id="tip" role="tooltip"></div>
       </div>
-      <aside class="side" id="side" aria-label="Panel de detalle"></aside>
-    </div>
-    <p class="tablelink"><button class="linkbtn" id="tableBtn" type="button" aria-expanded="false" aria-controls="tablaWrap">▤ Ver datos como tabla</button></p>
-    <div id="tablaWrap" class="tablawrap" hidden></div>
-  </section>
+      <p class="tablelink"><button class="linkbtn" id="tableBtn" type="button" aria-expanded="false" aria-controls="tablaWrap">▤ Ver datos como tabla</button></p>
+      <div id="tablaWrap" class="tablawrap" hidden></div>
+    </main>
+  </div>
 
   <!-- ============ LAS 4 PREGUNTAS ============ -->
   <section class="box" id="preguntas" aria-labelledby="preg-h">

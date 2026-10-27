@@ -71,6 +71,7 @@ Los datos crudos se dejaron en `utec_perfiles/` (su ubicación original) en luga
 
 ## Decisiones de diseño
 
+- **La red es la protagonista.** Ocupa toda la pantalla (salvo los controles). La marca, las cifras y el panel de detalle (ranking, ficha, equipo) van en una barra lateral que se puede plegar (‹). «Cómo leer la red» vive en la leyenda, dentro de la red y abajo a la izquierda: es lo primero que se lee sin tapar el grafo. Muestra solo las codificaciones activas (el anillo si está encendido, la línea roja con T4, la estrella con T5) y se puede plegar.
 - **Una sola red; los botones nunca cambian el grafo.** Solo mueven nodos (con la simulación de fuerzas) o cambian opacidades y capas. Así el lector no pierde el mapa mental entre tareas.
 - **Nodo = foto** (pide el enunciado) recortada en círculo, con un **borde de color = departamento**. Sin foto real (2 *placeholders* del portal), se muestran las iniciales sobre el color.
 - **Tamaño fijo por año** (no por botón): el dominio de la escala es el máximo de 2026, así que durante la animación los nodos crecen de verdad.

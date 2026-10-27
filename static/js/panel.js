@@ -184,25 +184,23 @@
     return box(`Ranking ${ctx.year}`, body);
   }
 
-  // ---------- 5. Cómo leer la red ----------
-  function leer(ctx) {
-    const st = ctx.state, sw = (inner) => `<svg width="38" height="24" viewBox="0 0 38 24" aria-hidden="true">${inner}</svg>`;
-    const ink = css("--edge-cross"), lig = css("--edge-in"), ring = css("--ring"), pot = css("--potential"), c1 = css("--c1");
+  // ---------- 5. Cómo leer la red (va en la leyenda, dentro de la red; ver main.js renderLegend) ----------
+  UV.leerHtml = function (ctx) {
+    const st = ctx.state, sw = (inner) => `<svg width="34" height="18" viewBox="0 0 38 20" aria-hidden="true">${inner}</svg>`;
+    const ink = css("--edge-cross"), lig = css("--edge-in"), ring = css("--ring"), pot = css("--potential"), c1 = css("--c1"), tema = css("--tema");
     let h = `<div class="enc">
-      ${sw(`<circle cx="9" cy="12" r="4.5" fill="${c1}"/><circle cx="26" cy="12" r="9" fill="${c1}"/>`)}<span><b>Tamaño</b> = publicaciones compartidas con colegas UTEC. Escala fija: no cambia con los botones.</span>
-      ${sw(`<circle cx="19" cy="12" r="8" fill="none" stroke="${c1}" stroke-width="3"/><circle cx="19" cy="12" r="4" fill="${css("--line-2")}"/>`)}<span><b>Borde de color</b> = departamento (ver leyenda). Gris = departamentos pequeños.</span>`;
-    if (st.rings) h += `${sw(`<circle cx="19" cy="12" r="6" fill="${c1}"/><circle cx="19" cy="12" r="10" fill="none" stroke="${ring}" stroke-width="2.5"/>`)}<span><b>Anillo oscuro</b> = qué tan puente es (betweenness). Más grueso, más caminos pasan por la persona.</span>`;
-    h += `${sw(`<line x1="2" y1="12" x2="36" y2="12" stroke="${ink}" stroke-width="2.5"/>`)}<span><b>Línea oscura</b> = coautoría entre departamentos. Grosor ∝ √publicaciones.</span>
-      ${sw(`<line x1="2" y1="12" x2="36" y2="12" stroke="${lig}" stroke-width="2.5"/>`)}<span><b>Línea clara</b> = coautoría dentro del mismo departamento.</span>`;
-    if (st.potential) h += `${sw(`<line x1="2" y1="12" x2="36" y2="12" stroke="${pot}" stroke-width="2.4" stroke-dasharray="6 4"/>`)}<span><b>Punteada roja</b> = colaboración potencial: producción muy parecida y ninguna coautoría.</span>`;
-    if (ctx.tema) h += `${sw(`<line x1="8" y1="12" x2="36" y2="12" stroke="${css("--tema")}" stroke-width="3.5" stroke-linecap="round" stroke-dasharray="1 5"/><path transform="translate(8,12)" d="${d3.symbol(d3.symbolStar, 110)()}" fill="${css("--tema")}"/>`)}<span><b>Estrella</b> = el tema buscado, en el centro de sus candidatos. ${ctx.tema.facetas.length
-      ? "Cada <b>estrella pequeña con nombre</b> es una faceta del tema, ubicada entre sus expertos; la línea a rayas la une al tema. La distancia entre estrellas muestra cuán lejos están hoy esos grupos en la red."
-      : ""} Línea de puntos más gruesa = más cercano. Las coautorías visibles son las que unen al equipo.</span>`;
-    h += `</div><p class="hint" style="margin-top:8px">${st.group === "dept"
-      ? "<b>Posición:</b> cada departamento tiene su zona. Quien colabora mucho fuera de su departamento es atraído por sus coautores y queda <b>entre zonas</b>: así se ven los puentes."
-      : "<b>Posición:</b> los nodos se reagrupan por comunidad (Louvain). El color sigue siendo el departamento: una mancha multicolor es una comunidad interdisciplinaria."}</p>`;
-    return box("Cómo leer la red", h);
-  }
+      ${sw(`<circle cx="9" cy="10" r="4.5" fill="${c1}"/><circle cx="26" cy="10" r="8.5" fill="${c1}"/>`)}<span><b>Tamaño</b> = publicaciones compartidas en UTEC</span>
+      ${sw(`<circle cx="19" cy="10" r="7.5" fill="none" stroke="${c1}" stroke-width="3"/>`)}<span><b>Borde</b> = departamento (abajo)</span>`;
+    if (st.rings) h += `${sw(`<circle cx="19" cy="10" r="5.5" fill="${c1}"/><circle cx="19" cy="10" r="9" fill="none" stroke="${ring}" stroke-width="2.5"/>`)}<span><b>Anillo oscuro</b> = puente (betweenness)</span>`;
+    h += `${sw(`<line x1="2" y1="10" x2="36" y2="10" stroke="${ink}" stroke-width="2.5"/>`)}<span><b>Línea oscura</b> = coautoría entre departamentos</span>
+      ${sw(`<line x1="2" y1="10" x2="36" y2="10" stroke="${lig}" stroke-width="2.5"/>`)}<span><b>Línea clara</b> = mismo departamento</span>`;
+    if (st.potential) h += `${sw(`<line x1="2" y1="10" x2="36" y2="10" stroke="${pot}" stroke-width="2.4" stroke-dasharray="6 4"/>`)}<span><b>Punteada roja</b> = colaboración potencial</span>`;
+    if (ctx.tema) h += `${sw(`<line x1="10" y1="10" x2="36" y2="10" stroke="${tema}" stroke-width="3.5" stroke-linecap="round" stroke-dasharray="1 5"/><path transform="translate(8,10)" d="${d3.symbol(d3.symbolStar, 110)()}" fill="${tema}"/>`)}<span><b>Estrella</b> = tema${ctx.tema.facetas.length ? " y sus facetas" : ""}; puntos más gruesos = más cercano</span>`;
+    h += `</div><p class="lg-pos">${st.group === "dept"
+      ? "<b>Posición:</b> zona del departamento; quien colabora fuera queda <b>entre zonas</b>."
+      : "<b>Posición:</b> por comunidad (Louvain); el borde sigue siendo el departamento."}</p>`;
+    return h;
+  };
 
   UV.renderPanel = function (ctx, on) {
     const st = ctx.state;
@@ -212,7 +210,6 @@
     if (st.potential) h += pares(ctx);
     if (st.group === "comm") h += comunidades(ctx);
     h += ranking(ctx);
-    h += leer(ctx);
     if (!st.selected) h += `<p class="hint">Haz clic en un nodo, en un nombre del ranking o usa el buscador para ver la ficha y la red personal.</p>`;
     const side = document.getElementById("side");
     const scroll = side.scrollTop;

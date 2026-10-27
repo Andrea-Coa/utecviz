@@ -58,7 +58,7 @@
       rScale.range([R_MIN * Math.max(k, 0.75), R_MAX * k]);
     }
     // en pantallas anchas la leyenda ocupa una franja a la izquierda: el layout se centra en el resto
-    const legendW = () => (W > 900 ? Math.min(250, W * 0.22) : 0);
+    const legendW = () => (W > 900 ? Math.min(300, W * 0.26) : 0);
     const cx = () => legendW() + (W - legendW()) / 2;
     const cy = () => (H - LEGEND_H) / 2;
     function zoneAnchor(z, k = 1) {

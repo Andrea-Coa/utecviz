@@ -145,7 +145,7 @@
     rank(m) { state.rankMode = m; renderPanel(); },
     potRank(m) { state.potRank = m; computePairs(); render(0); },
     hoverPair(a, b) { if (a) net.highlightPair(a, b); else net.applyStyles(false); },
-    clearTema() { setTema(null); render(0); },
+    clearTema() { setTema(null); state.selected = null; net.resetZoom(); render(0); },   // vuelve a la red completa
   };
   const net = UV.createNetwork(ctx, handlers);
 
@@ -161,10 +161,12 @@
   let legendOpen = window.innerWidth > 860;
   function renderLegend() {
     const lg = $("#legend");
-    lg.innerHTML = `<button type="button" class="lg-title" id="lgToggle" aria-expanded="${legendOpen}">${legendOpen ? "▾" : "▸"} Departamento · clic para ocultar</button>`
-      + (!legendOpen ? "" : zones.map((z) =>
-      `<button type="button" data-zona="${z.zona}" aria-pressed="${!state.hiddenZones.has(z.zona)}">
-        <span class="dot" style="background:var(--c${z.color})"></span>${z.zona} <span class="hint" style="margin:0">(${z.n})</span></button>`).join(""));
+    // leyenda dentro de la red: primero «cómo leer» (lo que cambia con los botones), luego los departamentos
+    lg.innerHTML = `<button type="button" class="lg-title" id="lgToggle" aria-expanded="${legendOpen}">${legendOpen ? "▾" : "▸"} Cómo leer la red</button>`
+      + (!legendOpen ? "" : `<div class="lg-body">${UV.leerHtml(ctx)}
+        <div class="lg-sub">Departamento · clic para ocultar</div>
+        <div class="lg-deps">${zones.map((z) => `<button type="button" data-zona="${z.zona}" aria-pressed="${!state.hiddenZones.has(z.zona)}" title="${z.zona} (${z.n})">
+          <span class="dot" style="background:var(--c${z.color})"></span><span class="nm">${z.zona}</span></button>`).join("")}</div></div>`);
     $("#lgToggle").addEventListener("click", () => { legendOpen = !legendOpen; renderLegend(); });
     lg.querySelectorAll("button[data-zona]").forEach((b) => b.addEventListener("click", () => {
       const z = b.dataset.zona;
@@ -224,6 +226,7 @@
   let temaPeticion = 0;
   function setTema(t) {
     state.tema = t; computeTema();
+    $("#temaClear").hidden = !t;
     if (!t) { temaPeticion++; temaInput.value = ""; }
   }
   async function buscarTema(q, intento = 0) {
@@ -242,6 +245,9 @@
     setTema({ q, error: r.error || "El modelo no está disponible." }); render(0);
   }
   $("#temaForm").addEventListener("submit", (ev) => { ev.preventDefault(); buscarTema(temaInput.value); });
+  $("#temaClear").addEventListener("click", () => handlers.clearTema());
+  // borrar el texto del campo (también con la ✕ nativa del input) quita el tema
+  temaInput.addEventListener("input", () => { if (!temaInput.value.trim() && state.tema) handlers.clearTema(); });
   const thr = $("#thrRange");
   thr.value = state.threshold; $("#thrOut").textContent = UV.dec(state.threshold);
   thr.addEventListener("input", () => { state.threshold = +thr.value; $("#thrOut").textContent = UV.dec((+thr.value)); computePairs(); render(0); });
@@ -307,6 +313,14 @@
 
   let rz = null;
   window.addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(() => net.resize(), 150); });
+  const app = $("#app"), sideToggle = $("#sideToggle");
+  sideToggle.addEventListener("click", () => {
+    const abierta = app.classList.toggle("colapsada") === false;
+    sideToggle.setAttribute("aria-expanded", abierta);
+    sideToggle.textContent = abierta ? "‹" : "›";
+    sideToggle.title = abierta ? "Ocultar el panel" : "Mostrar el panel";
+    setTimeout(() => net.resize(), 280);
+  });
   document.addEventListener("keydown", (ev) => {
     if (ev.key !== "Escape") return;
     if (state.selected) handlers.select(null);
