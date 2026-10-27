@@ -76,6 +76,7 @@ Los datos crudos se dejaron en `utec_perfiles/` (su ubicación original) en luga
 | # | Pregunta | Métrica | Codificación |
 |---|---|---|---|
 | T1 | ¿Quiénes colaboran más dentro de UTEC? | Grado ponderado (publicaciones compartidas con otros docentes UTEC) | Tamaño del nodo (escala √, dominio fijo al máximo de 2026) + ranking «Prolíficos» |
+| T1b | ¿Quiénes tienen más impacto? | Índice h (Scopus, del perfil) | Botón «Tamaño: Calidad (h)»: el radio pasa a escala √ del índice h (sin dato = mínimo); «Contribución» (por defecto) vuelve al grado ponderado |
 | T2 | ¿Quiénes son puentes entre departamentos? | Betweenness (no ponderado, normalizado) + fracción de coautoría fuera del departamento | Anillo oscuro (grosor ∝ betweenness, desde el 12 % del máximo del año) + posición entre zonas + aristas entre departamentos en tinta oscura + ranking «Puentes» |
 | T3 | ¿Las comunidades coinciden con los departamentos? | Louvain, modularidad Q, NMI y ARI comunidad↔departamento, pureza | Botón «Agrupar por: Comunidad»: los nodos se reordenan con transición; manchas C1…Cn; el color sigue siendo el departamento |
 | T4 | ¿Qué colaboraciones nuevas son probables? | Similitud coseno de embeddings en pares sin coautoría (opcional: 0,7·sim + 0,3·Adamic-Adar) | Botón «Colaboraciones potenciales»: coautorías al 7 %, punteadas rojas, umbral y filtro «solo entre departamentos», top 10 en el panel |

@@ -28,7 +28,8 @@
     let W = 800, H = 600;
     // dominio fijo al máximo de 2026; el rango solo depende del tamaño del lienzo (no de los botones)
     const rScale = d3.scaleSqrt().domain([0, ctx.WMAX]).range([R_MIN, R_MAX]);
-    const radius = (n) => rScale(n.m.wdeg);
+    const hScale = rScale.copy().domain([0, ctx.HMAX]);   // «Tamaño: Calidad»: índice h (sin dato = mínimo)
+    const radius = (n) => (ctx.state.size === "h" ? hScale(n.indice_h || 0) : rScale(n.m.wdeg));
     const colorOf = (n) => css("--c" + n.color);
     const zoneIdx = (z) => ctx.zoneIndex.get(z);
 
@@ -56,6 +57,7 @@
       bg.attr("width", W).attr("height", H);
       const k = Math.max(0.55, Math.min(1, Math.min(W, H) / 680));
       rScale.range([R_MIN * Math.max(k, 0.75), R_MAX * k]);
+      hScale.range(rScale.range());
     }
     // en pantallas anchas la leyenda ocupa una franja a la izquierda: el layout se centra en el resto
     const legendW = () => (W > 900 ? Math.min(300, W * 0.26) : 0);

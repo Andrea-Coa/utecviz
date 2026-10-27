@@ -16,7 +16,7 @@
 
   // ---------- estado centralizado ----------
   const state = {
-    year: Y_MAX, group: "dept", rings: true, potential: false, threshold: 0.50, crossOnly: true,
+    year: Y_MAX, group: "dept", size: "wdeg", rings: true, potential: false, threshold: 0.50, crossOnly: true,
     selected: null, hiddenZones: new Set(), rankMode: "w", potRank: "sim",
     tema: null,   // T5: {q, cargando} | {q, error} | {q, candidatos} (respuesta de /api/tema)
   };
@@ -42,6 +42,7 @@
   const ctx = {
     state, nodes, byId, zones, zoneIndex, zoneOf, sim, metrics,
     WMAX: d3.max(Object.values(metrics[Y_MAX].nodes), (m) => m.wdeg) || 1,
+    HMAX: d3.max(nodes, (n) => n.indice_h) || 1,
     WEDGEMAX: d3.max(edges, (e) => e.w) || 1,
     active: [], pairs: [], hover: null,
   };
@@ -211,6 +212,12 @@
     document.querySelectorAll("[data-group]").forEach((x) => x.setAttribute("aria-pressed", x.dataset.group === g));
     render(0.6);
   }
+  // tamaño del nodo: contribución (grado ponderado, T1) o calidad (índice h, T1b)
+  document.querySelectorAll("[data-size]").forEach((b) => b.addEventListener("click", () => {
+    state.size = b.dataset.size;
+    document.querySelectorAll("[data-size]").forEach((x) => x.setAttribute("aria-pressed", x.dataset.size === state.size));
+    render(0.3);
+  }));
   const ringBtn = $("#ringBtn"), potBtn = $("#potBtn");
   function setRings(v) { state.rings = v; ringBtn.setAttribute("aria-pressed", v); }
   function setPotential(v) {
