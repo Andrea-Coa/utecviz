@@ -23,6 +23,26 @@
     return `<section class="pbox"><h3>${title}${extra}</h3><div class="pb">${body}</div></section>`;
   }
 
+  // Publicaciones de la persona hasta el año elegido, de la más reciente a la más antigua (publicaciones.json)
+  const PUBS_VISIBLES = 8;
+  function publicaciones(n, ctx) {
+    const d = ctx.pubsDe, Y = ctx.year;
+    if (!d) return `<h4>Publicaciones</h4><p class="hint">Cargando publicaciones…</p>`;
+    if (d.error) return `<h4>Publicaciones</h4><p class="hint">No se pudo cargar la lista de publicaciones.</p>`;
+    const todas = d.pubs[n.id] || [];
+    const ps = todas.filter((p) => p[2] == null || p[2] <= Y);
+    const tit = `<h4>Publicaciones hasta ${Y} (${ps.length}${ps.length < todas.length ? ` de ${todas.length}` : ""})</h4>`;
+    if (!ps.length) return `${tit}<p class="hint">${todas.length ? `Sin publicaciones hasta ${Y}.` : "Sin publicaciones en el portal."}</p>`;
+    const url = (s) => (/^https?:/.test(s) ? s : d.prefijo + s);
+    const li = (p) => `<li><a href="${esc(url(p[1]))}" target="_blank" rel="noopener">${esc(p[0])}</a> (${p[2] ?? "s/f"})${
+      p[3] ? ' <span class="k">· más de 50 autores</span>' : ""}</li>`;
+    const hyper = ps.filter((p) => p[3]).length;
+    return `${tit}<ul class="pubpar">${ps.slice(0, PUBS_VISIBLES).map(li).join("")}</ul>
+      ${ps.length > PUBS_VISIBLES ? `<details class="mas-pubs"><summary>Ver las ${ps.length - PUBS_VISIBLES} restantes</summary>
+        <ul class="pubpar">${ps.slice(PUBS_VISIBLES).map(li).join("")}</ul></details>` : ""}
+      ${hyper ? `<p class="hint">${hyper} con más de 50 autores (colaboraciones masivas; no cuentan para la red).</p>` : ""}`;
+  }
+
   // ---------- 1. Ficha ----------
   function ficha(ctx) {
     const n = ctx.byId.get(ctx.state.selected), m = n.m, Y = ctx.year;
@@ -76,6 +96,7 @@
       <h4>Temas principales</h4>${temas}
       <h4>Coautores UTEC hasta ${Y}</h4>${coHtml}${co.length ? '<p class="hint">↔ = de otro departamento. Clic en un nombre para ver los títulos.</p>' : ""}${hyperHtml}
       <h4>Más similares sin coautoría</h4>${sugHtml}
+      ${publicaciones(n, ctx)}
       <div class="links">${links}</div>`;
     return box("Ficha del docente", body, `<button class="mini-btn" type="button" data-close>Cerrar ✕</button>`);
   }
@@ -199,6 +220,7 @@
     if (st.rings) h += `${sw(`<circle cx="19" cy="10" r="5.5" fill="${c1}"/><circle cx="19" cy="10" r="9" fill="none" stroke="${ring}" stroke-width="2.5"/>`)}<span><b>Anillo oscuro</b> = puente (betweenness)</span>`;
     h += `${sw(`<line x1="2" y1="10" x2="36" y2="10" stroke="${ink}" stroke-width="2.5"/>`)}<span><b>Línea oscura</b> = coautoría entre departamentos</span>
       ${sw(`<line x1="2" y1="10" x2="36" y2="10" stroke="${lig}" stroke-width="2.5"/>`)}<span><b>Línea clara</b> = mismo departamento</span>`;
+    if (st.group === "hier") h += `${sw(`<circle cx="19" cy="10" r="4" fill="none" stroke="${lig}" stroke-width="1.5"/><circle cx="19" cy="10" r="8.5" fill="none" stroke="${lig}" stroke-width="1.5" stroke-dasharray="2 2"/>`)}<span><b>Jerárquico</b>: anillo interior = con coautores UTEC, exterior = sin coautores; las líneas pasan por el centro de su departamento</span>`;
     if (st.potential) h += `${sw(`<line x1="2" y1="10" x2="36" y2="10" stroke="${pot}" stroke-width="2.4" stroke-dasharray="6 4"/>`)}<span><b>Punteada roja</b> = colaboración potencial</span>`;
     if (ctx.tema) h += `${sw(`<line x1="10" y1="10" x2="36" y2="10" stroke="${tema}" stroke-width="3.5" stroke-linecap="round" stroke-dasharray="1 5"/><path transform="translate(8,10)" d="${d3.symbol(d3.symbolStar, 110)()}" fill="${tema}"/>`)}<span><b>Estrella</b> = tema${ctx.tema.facetas.length ? " y sus facetas" : ""}; puntos más gruesos = más cercano</span>`;
     h += `</div>`;

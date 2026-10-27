@@ -87,6 +87,12 @@ Los datos crudos se dejaron en `utec_perfiles/` (su ubicación original) en luga
 
 - **La red es la protagonista.** Ocupa toda la pantalla (salvo los controles). La marca, las cifras y el panel de detalle (ranking, ficha, equipo) van en una barra lateral que se puede plegar (‹). «Cómo leer la red» vive en la leyenda, dentro de la red y abajo a la izquierda: es lo primero que se lee sin tapar el grafo. Muestra solo las codificaciones activas (el anillo si está encendido, la línea roja con T4, la estrella con T5) y se puede plegar.
 - **Una sola red; los botones nunca cambian el grafo.** Solo mueven nodos (con la simulación de fuerzas) o cambian opacidades y capas. Así el lector no pierde el mapa mental entre tareas.
+- **Vista jerárquica** («Agrupar por: Jerárquico»): un complemento ordenado de la vista por departamento, no un reemplazo. Usa la jerarquía UTEC → departamento → persona en disposición radial con *hierarchical edge bundling* (Holten, 2006), con `d3.curveBundle` y `d3.arc`:
+  - Cada departamento ocupa un sector, en el mismo orden que sus zonas.
+  - En el anillo interior van quienes tienen coautores UTEC en el año elegido, ordenados por comunidad y grado ponderado; en el exterior, quienes no tienen.
+  - Las coautorías pasan por el centro de su departamento y, si cruzan departamentos, por el centro del círculo, de modo que forman haces.
+  - Con la animación, las personas pasan del anillo exterior al interior al conseguir su primer coautor.
+  - Los nodos conservan su tamaño. Cuando un sector tiene muchos nodos grandes (Bioingeniería, Mecánica), estos se comprimen y pueden encimarse un poco.
 - **Nodo = foto** (pide el enunciado) recortada en círculo, con un **borde de color = departamento**. Sin foto real (2 *placeholders* del portal), se muestran las iniciales sobre el color.
 - **Tamaño fijo por año** (no por botón): el dominio de la escala es el máximo de 2026, así que durante la animación los nodos crecen de verdad.
 - **Puentes por dos canales**: el anillo (métrica exacta) y la posición. La atracción al ancla del departamento es `0,26·(1 − 0,85·cross_frac)`, de modo que quien colabora fuera queda «suelto» y sus coautores lo llevan al espacio entre zonas.

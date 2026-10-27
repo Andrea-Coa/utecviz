@@ -10,14 +10,19 @@ Reproduce los mismos datos que se extrajeron en la sesión original:
                 publicaciones_detalle.json
 
 Uso:
-    pip install requests beautifulsoup4
-    python scraper_utec_cris.py                  # todo (perfiles + fotos + detalle)
+    pip install requests beautifulsoup4 playwright
+    playwright install chromium                  # solo si no tienes Google Chrome instalado
     python scraper_utec_cris.py --limit 3        # prueba rápida con 3 personas
+    python scraper_utec_cris.py                  # todo (perfiles + fotos + detalle)
     python scraper_utec_cris.py --sin-detalle    # solo perfiles
-    python scraper_utec_cris.py --sin-fotos --workers 6 --out datos_utec
 
 Notas:
-  * Sé amable con el servidor: por defecto usa 4 hilos y una pausa corta por request.
+  * El portal está detrás de Cloudflare y responde 403 a clientes HTTP como `requests`.
+    Por eso, por defecto el script abre un navegador real (Playwright) y descarga cada página
+    desde ahí. Si aparece una verificación de Cloudflare, resuélvela en la ventana.
+  * robots.txt del portal pide Crawl-Delay: 5. Por defecto se respeta (1 página cada 5 s);
+    la corrida completa (~3.400 descargas) tarda unas 4–5 horas. Con --sin-detalle
+    (solo perfiles y fotos) son unos 30 minutos. Puedes bajar --delay bajo tu criterio.
   * Los CSV salen en UTF-8 con BOM (se abren bien en Excel). Las celdas se recortan a
     32.000 caracteres (límite de Excel); los JSON guardan el texto completo.
 """
@@ -41,13 +46,59 @@ from urllib3.util.retry import Retry
 BASE = "https://cris.utec.edu.pe"
 LISTADO = BASE + "/es/persons/?page={}"
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
-                  "(KHTML, like Gecko) Chrome/126.0 Safari/537.36 UtecVis-scraper",
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                  "(KHTML, like Gecko) Chrome/126.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
     "Accept-Language": "es-PE,es;q=0.9,en;q=0.8",
 }
 MAX_CELDA = 32000
 _local = threading.local()
 ARGS = None
+NAV = None  # navegador Playwright (modo por defecto)
+
+
+class Navegador:
+    """Abre un navegador real (Playwright) y pide cada página con fetch() desde dentro del sitio.
+
+    El portal está detrás de Cloudflare, que rechaza (403) a clientes que no son navegadores,
+    como `requests`. Con un navegador real las peticiones se comportan igual que al navegar
+    a mano. Si aparece una verificación de Cloudflare, resuélvela tú en la ventana.
+    """
+
+    def __init__(self, headless=False):
+        from playwright.sync_api import sync_playwright
+        self.pw = sync_playwright().start()
+        try:
+            self.browser = self.pw.chromium.launch(channel="chrome", headless=headless)
+        except Exception:  # noqa: BLE001  (Chrome no instalado -> Chromium de Playwright)
+            self.browser = self.pw.chromium.launch(headless=headless)
+        self.page = self.browser.new_page(locale="es-PE")
+        self.page.goto(BASE + "/es/persons/", wait_until="domcontentloaded", timeout=120000)
+        log("  Esperando a que cargue el portal (si aparece una verificación, resuélvela en la ventana)…")
+        self.page.wait_for_selector(".result-container", timeout=300000)
+
+    def get(self, url, binario=False):
+        js = """async ([u, bin]) => {
+            const r = await fetch(u, {credentials: 'include'});
+            if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + u);
+            if (!bin) return await r.text();
+            const b = new Uint8Array(await r.arrayBuffer());
+            let s = ''; for (let i = 0; i < b.length; i += 0x8000) s += String.fromCharCode(...b.subarray(i, i + 0x8000));
+            return btoa(s);
+        }"""
+        for intento in range(4):
+            try:
+                res = self.page.evaluate(js, [url, binario])
+                return base64.b64decode(res) if binario else res
+            except Exception as e:  # noqa: BLE001
+                if intento == 3:
+                    raise
+                log(f"  reintento {intento + 1} ({e})")
+                time.sleep(5 * (intento + 1))
+
+    def cerrar(self):
+        self.browser.close()
+        self.pw.stop()
 
 
 # --------------------------------------------------------------------------- utilidades
@@ -66,6 +117,8 @@ def sesion():
 def get(url, binario=False):
     if ARGS and ARGS.delay:
         time.sleep(ARGS.delay)
+    if NAV is not None:
+        return NAV.get(url, binario)
     r = sesion().get(url, timeout=60)
     r.raise_for_status()
     return r.content if binario else r.text
@@ -105,6 +158,17 @@ def log(msg):
 
 def en_paralelo(func, items, workers, etiqueta):
     resultados, errores = [None] * len(items), []
+    if workers <= 1:  # secuencial en el hilo principal (obligatorio con Playwright)
+        for k, it in enumerate(items, 1):
+            try:
+                resultados[k - 1] = func(it)
+            except Exception as e:  # noqa: BLE001
+                errores.append(f"{it}: {e}")
+            if k % 10 == 0 or k == len(items):
+                log(f"  {etiqueta}: {k}/{len(items)}")
+        for e in errores:
+            log("  ERROR " + e)
+        return resultados, errores
     with ThreadPoolExecutor(max_workers=workers) as ex:
         futs = {ex.submit(func, it): i for i, it in enumerate(items)}
         for k, f in enumerate(as_completed(futs), 1):
@@ -393,16 +457,36 @@ def main():
     global ARGS
     ap = argparse.ArgumentParser(description="Scraper del portal CRIS de UTEC")
     ap.add_argument("--out", default="datos_utec", help="carpeta de salida (default: datos_utec)")
-    ap.add_argument("--workers", type=int, default=4, help="hilos en paralelo (default: 4)")
-    ap.add_argument("--delay", type=float, default=0.2, help="pausa por request en segundos (default: 0.2)")
+    ap.add_argument("--modo", choices=["navegador", "requests"], default="navegador",
+                    help="navegador = Playwright con navegador real (default; evita el 403 de Cloudflare); "
+                         "requests = HTTP directo (más rápido, pero el portal suele bloquearlo)")
+    ap.add_argument("--headless", action="store_true", help="navegador sin ventana (Cloudflare puede bloquearlo)")
+    ap.add_argument("--workers", type=int, default=1, help="hilos en paralelo, solo modo requests (default: 1)")
+    ap.add_argument("--delay", type=float, default=5.0,
+                    help="pausa por página en segundos (default: 5, lo que pide robots.txt del portal)")
     ap.add_argument("--limit", type=int, default=0, help="procesar solo N personas (para probar)")
     ap.add_argument("--sin-fotos", action="store_true", help="no descargar fotos")
     ap.add_argument("--sin-detalle", action="store_true", help="no entrar al detalle de cada publicación")
     ARGS = ap.parse_args()
 
+    global NAV
     out = ARGS.out
     os.makedirs(os.path.join(out, "fotos"), exist_ok=True)
     t0 = time.time()
+    if ARGS.modo == "navegador":
+        if ARGS.workers != 1:
+            log("  Modo navegador: se usa 1 hilo (Playwright no admite varios hilos).")
+        ARGS.workers = 1
+        log("0/4 Abriendo el navegador…")
+        NAV = Navegador(headless=ARGS.headless)
+    try:
+        correr(out, t0)
+    finally:
+        if NAV is not None:
+            NAV.cerrar()
+
+
+def correr(out, t0):
 
     log("1/4 Listando perfiles…")
     urls = listar_personas()

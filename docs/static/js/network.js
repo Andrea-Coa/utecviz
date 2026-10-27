@@ -16,6 +16,7 @@
     const defs = svg.append("defs");
     const bg = svg.append("rect").attr("class", "bg").attr("fill", "transparent");
     const root = svg.append("g");
+    const gGuide = root.append("g").attr("class", "guides");   // vista jerárquica: anillos y arcos de departamento
     const gHull = root.append("g").attr("class", "hulls");
     const gZone = root.append("g");
     const gCo = root.append("g");
@@ -73,11 +74,57 @@
       const a = (i / nC) * 2 * Math.PI - Math.PI / 2, rr = Math.min(W - legendW(), H) * (nC > 1 ? 0.24 : 0);
       return [cx() + Math.cos(a) * rr, cy() + Math.sin(a) * rr];
     }
+    // ---------- vista jerárquica (radial): UTEC → departamento (zona) → persona ----------
+    // Cada zona ocupa un sector del círculo, en el mismo orden que en la vista por departamento. Dentro del
+    // sector, quien tiene coautores UTEC en el año va en el anillo interior (ordenado por comunidad y grado
+    // ponderado) y quien no, en el exterior. Las aristas se agrupan pasando por el centro de su departamento
+    // (hierarchical edge bundling, Holten 2006): las coautorías entre departamentos forman haces por el centro.
+    let hier = null;
+    const isHier = () => ctx.state.group === "hier";
+    function computeHier() {
+      const CX = cx(), CY = cy();
+      const sinCo = ctx.nodes.filter((n) => !n.m.degree), conCo = ctx.nodes.filter((n) => n.m.degree);
+      const rOut = d3.max(sinCo, radius) || R_MIN, rIn = d3.max(conCo, radius) || R_MIN;
+      // margen para las etiquetas de departamento: ~110 px a los lados (texto horizontal), ~44 arriba y abajo
+      const Rout = Math.max(120, Math.min((W - legendW()) / 2 - rOut - 110, H / 2 - rOut - 44));
+      const Rin = Math.max(70, Rout - rOut - rIn - 10);
+      const ancho = (ms, R) => d3.sum(ms, (n) => (2 * radius(n) + 3) / R);
+      const porZona = ctx.zones.map((z) => {
+        const ms = ctx.nodes.filter((n) => n.zona === z.zona);
+        const inner = ms.filter((n) => n.m.degree).sort((a, b) => (a.m.comm < 0) - (b.m.comm < 0)
+          || a.m.comm - b.m.comm || b.m.wdeg - a.m.wdeg || a.nombre.localeCompare(b.nombre));
+        const outer = ms.filter((n) => !n.m.degree).sort((a, b) => b.pubs_total - a.pubs_total || a.nombre.localeCompare(b.nombre));
+        return { z, inner, outer, need: Math.max(ancho(inner, Rin), ancho(outer, Rout)) };
+      });
+      const gap = 0.05, libre = 2 * Math.PI - gap * porZona.length, total = d3.sum(porZona, (d) => d.need);
+      const pos = new Map(), hub = new Map(), sectores = [];
+      let a = -Math.PI / 2 - (porZona[0].need * libre / total) / 2;   // el primer departamento queda arriba
+      const colocar = (ms, R, mid, A) => {   // centra los nodos en el sector; si no caben, los comprime
+        const wt = ancho(ms, R), f = Math.min(1, A / (wt || 1));
+        let acc = mid - (wt * f) / 2;
+        ms.forEach((n) => {
+          const w = ((2 * radius(n) + 3) / R) * f;
+          pos.set(n.id, [CX + Math.cos(acc + w / 2) * R, CY + Math.sin(acc + w / 2) * R]);
+          acc += w;
+        });
+      };
+      porZona.forEach((d) => {
+        const A = (d.need * libre) / total, mid = a + A / 2;
+        colocar(d.inner, Rin, mid, A);
+        colocar(d.outer, Rout, mid, A);
+        hub.set(d.z.zona, [CX + Math.cos(mid) * Rin * 0.45, CY + Math.sin(mid) * Rin * 0.45]);
+        sectores.push({ zona: d.z.zona, color: d.z.color, a0: a, a1: a + A, mid });
+        a += A + gap;
+      });
+      return { pos, hub, sectores, Rin, Rout, rOut, CX, CY };
+    }
     function anchor(n) {
       if (ctx.state.group === "comm") return n.m.comm >= 0 ? commAnchor(n.m.comm) : zoneAnchor(n.zona, 1.1);
+      if (isHier() && hier) return hier.pos.get(n.id);
       return zoneAnchor(n.zona);
     }
     function anchorStrength(n) {
+      if (isHier()) return 0.3;
       if (ctx.state.group === "comm") return n.m.comm >= 0 ? 0.2 : 0.08;
       if (!n.m.degree) return 0.2;
       // quien colabora fuera de su departamento queda "suelto" y sus coautores lo llevan entre zonas
@@ -100,16 +147,20 @@
     let links = [];
 
     function setForces() {
+      hier = isHier() ? computeHier() : null;
       links = ctx.active.map((e) => ({ source: e.source, target: e.target, cross: e.cross, key: e.key }));
       const byId = ctx.byId;
+      // en la vista jerárquica las posiciones son fijas: sin repulsión, enlaces ni colisión
+      sim.force("charge").strength(isHier() ? 0 : -60);
       sim.force("link", d3.forceLink(links).id((d) => d.id).distance(55).strength((l) => {
+        if (isHier()) return 0;
         const a = byId.get(l.source.id || l.source), b = byId.get(l.target.id || l.target);
         if (ctx.state.group === "comm") return a.m.comm >= 0 && a.m.comm === b.m.comm ? 0.35 : 0.01;
         return a.departamento === b.departamento ? 0.35 : 0.07;
       }));
       sim.force("x", d3.forceX((n) => anchor(n)[0]).strength(anchorStrength));
       sim.force("y", d3.forceY((n) => anchor(n)[1]).strength(anchorStrength));
-      sim.force("collide").radius((n) => radius(n) + 3);
+      sim.force("collide").radius((n) => (isHier() ? 0 : radius(n) + 3));
     }
 
     function warmStart() {
@@ -168,8 +219,8 @@
       const hovNb = new Set();
       if (hov) { hovNb.add(hov); ctx.active.forEach((e) => { if (e.source === hov) hovNb.add(e.target); if (e.target === hov) hovNb.add(e.source); }); }
       const t = (s) => (animate ? s.transition().duration(350) : s.interrupt());
-      t(gCo.selectAll("line:not(.exiting)")).attr("stroke-opacity", (e) => edgeOpacity(e, sel, hov));
-      t(gPot.selectAll("line")).attr("stroke-opacity", (p) => potOpacity(p, sel));
+      t(gCo.selectAll("path:not(.exiting)")).attr("stroke-opacity", (e) => edgeOpacity(e, sel, hov));
+      t(gPot.selectAll("path")).attr("stroke-opacity", (p) => potOpacity(p, sel));
       t(gTema.selectAll("line")).attr("stroke-opacity", (l) => (!l.c ? 0.45 : sel ? (l.c.id === sel ? 0.9 : 0.12) : 0.35 + 0.6 * l.c.rel));
       t(gNode.selectAll("g.node")).style("opacity", (n) => nodeOpacity(n, sel, nb, hov, hovNb));
     }
@@ -181,17 +232,17 @@
       const wmax = ctx.WEDGEMAX;
 
       // coautorías: data join con clave estable
-      const co = gCo.selectAll("line:not(.exiting)").data(ctx.active, (e) => e.key);
+      const co = gCo.selectAll("path:not(.exiting)").data(ctx.active, (e) => e.key);
       co.exit().classed("exiting", true).interrupt().transition("salida").duration(300).attr("stroke-opacity", 0).remove();
-      co.enter().append("line").attr("stroke-linecap", "round").attr("stroke-opacity", 0)
+      co.enter().append("path").attr("fill", "none").attr("stroke-linecap", "round").attr("stroke-opacity", 0)
         .merge(co)
         .attr("stroke", (e) => (e.cross ? ink : light))
         .attr("stroke-width", (e) => 1 + 4 * Math.sqrt(e.w / wmax));
 
       // colaboraciones potenciales (solo con el botón activo)
-      const pt = gPot.selectAll("line").data(st.potential ? ctx.pairs : [], (p) => p.key);
+      const pt = gPot.selectAll("path").data(st.potential ? ctx.pairs : [], (p) => p.key);
       pt.exit().remove();
-      pt.enter().append("line").attr("stroke-dasharray", "6 4").attr("stroke-linecap", "round").attr("stroke-opacity", 0)
+      pt.enter().append("path").attr("fill", "none").attr("stroke-dasharray", "6 4").attr("stroke-linecap", "round").attr("stroke-opacity", 0)
         .on("mouseenter", (ev, p) => showTip(ev, potTip(p)))
         .on("mousemove", moveTip).on("mouseleave", hideTip)
         .on("click", (ev, p) => { ev.stopPropagation(); on.select(p.source); })
@@ -276,14 +327,18 @@
       lb.enter().append("text").attr("class", "lbl").merge(lb).text((n) => n.corto);
 
       // etiquetas de zona (modo departamento)
-      const zl = gZone.selectAll("text").data(st.group === "dept" ? ctx.zones : [], (z) => z.zona);
+      if (isHier()) hier = computeHier();   // posiciones del año y tamaño actuales, para etiquetas y guías
+      const zl = gZone.selectAll("text").data(st.group !== "comm" ? ctx.zones : [], (z) => z.zona);
       zl.exit().transition().duration(250).style("opacity", 0).remove();
       zl.enter().append("text").attr("class", "zonelbl").style("opacity", 0).merge(zl)
         .each(function (z) {
-          const [x, y, a] = zoneAnchor(z.zona, 1.3), c = Math.cos(a);
+          const [x, y, a] = zoneLabelPos(z.zona), c = Math.cos(a);
           const lines = partir(z.zona), t = d3.select(this);
-          const X = Math.min(W - 6, Math.max(6, x)), Y = Math.min(H - 8 - 12 * (lines.length - 1), Math.max(14, y));
-          t.attr("x", X).attr("y", Y).style("text-anchor", c > 0.35 ? "end" : c < -0.35 ? "start" : "middle");
+          // jerárquica: el texto crece hacia afuera del círculo (las de arriba, hacia arriba); elipse: hacia adentro
+          const h = isHier(), arriba = h && Math.sin(a) < -0.3 ? 12 * (lines.length - 1) : 0;
+          const X = Math.min(W - 6, Math.max(6, x)), Y = Math.min(H - 8 - 12 * (lines.length - 1), Math.max(14, y - arriba));
+          const fuera = c > 0.35 ? "start" : c < -0.35 ? "end" : "middle", dentro = c > 0.35 ? "end" : c < -0.35 ? "start" : "middle";
+          t.attr("x", X).attr("y", Y).style("text-anchor", h ? fuera : dentro);
           t.selectAll("tspan").data(lines).join("tspan").attr("x", X).attr("dy", (d, i) => (i ? "1.15em" : 0)).text((d) => d);
         })
         .transition().duration(400).style("opacity", (z) => (st.hiddenZones.has(z.zona) ? 0.25 : 1));
@@ -295,6 +350,22 @@
       const he = hu.enter().append("g").attr("class", "hull");
       he.append("path");
       he.append("text").attr("class", "commlbl");
+
+      // vista jerárquica: anillos guía y un arco de color por departamento
+      const hg = isHier() && hier ? hier : null;
+      const anillos = gGuide.selectAll("circle").data(hg ? [hg.Rin, hg.Rout] : []);
+      anillos.exit().remove();
+      anillos.enter().append("circle").attr("class", "guide-ring").merge(anillos)
+        .attr("cx", (r) => (hg ? hg.CX : 0)).attr("cy", (r) => (hg ? hg.CY : 0)).attr("r", (r) => r);
+      const arco = d3.arc();
+      const arcos = gGuide.selectAll("path.guide-arc").data(hg ? hg.sectores : [], (d) => d.zona);
+      arcos.exit().remove();
+      arcos.enter().append("path").attr("class", "guide-arc").style("opacity", 0).merge(arcos)
+        .attr("transform", hg ? `translate(${hg.CX},${hg.CY})` : null)
+        .attr("d", (d) => arco({ innerRadius: hg.Rout + hg.rOut + 6, outerRadius: hg.Rout + hg.rOut + 10,
+          startAngle: d.a0 + Math.PI / 2, endAngle: d.a1 + Math.PI / 2 }))
+        .attr("fill", (d) => css("--c" + d.color))
+        .transition().duration(400).style("opacity", (d) => (st.hiddenZones.has(d.zona) ? 0.2 : 0.9));
 
       applyStyles(true);
       if (reheat) { setForces(); sim.alpha(reheat).restart(); } else ticked();
@@ -345,16 +416,25 @@
       gStar.selectAll("g.star").attr("transform", (s) => `translate(${s.x},${s.y})`);
     }
     const blob = d3.line().curve(d3.curveCatmullRomClosed.alpha(0.6));
+    // aristas: rectas; en la vista jerárquica, curvas que pasan por el centro de cada departamento y, si son
+    // entre departamentos, por el centro del círculo (la raíz de la jerarquía)
+    const bundle = d3.line().curve(d3.curveBundle.beta(0.85));
+    function edgePath(a, b) {
+      if (!isHier() || !hier) return `M${a.x},${a.y}L${b.x},${b.y}`;
+      const ha = hier.hub.get(a.zona), hb = hier.hub.get(b.zona);
+      return bundle(a.zona === b.zona ? [[a.x, a.y], ha, [b.x, b.y]]
+        : [[a.x, a.y], ha, [hier.CX, hier.CY], hb, [b.x, b.y]]);
+    }
+    // etiqueta de zona: alrededor de la elipse (vista por departamento) o fuera del círculo (jerárquica)
+    function zoneLabelPos(z) {
+      if (!isHier() || !hier) return zoneAnchor(z, 1.3);
+      const s = hier.sectores.find((d) => d.zona === z), R = hier.Rout + hier.rOut + 20;
+      return [hier.CX + Math.cos(s.mid) * R, hier.CY + Math.sin(s.mid) * R, s.mid];
+    }
     function ticked() {
       const byId = ctx.byId;
-      gCo.selectAll("line").each(function (e) {
-        const a = byId.get(e.source), b = byId.get(e.target);
-        this.setAttribute("x1", a.x); this.setAttribute("y1", a.y); this.setAttribute("x2", b.x); this.setAttribute("y2", b.y);
-      });
-      gPot.selectAll("line").each(function (p) {
-        const a = byId.get(p.source), b = byId.get(p.target);
-        this.setAttribute("x1", a.x); this.setAttribute("y1", a.y); this.setAttribute("x2", b.x); this.setAttribute("y2", b.y);
-      });
+      gCo.selectAll("path").attr("d", (e) => edgePath(byId.get(e.source), byId.get(e.target)));
+      gPot.selectAll("path").attr("d", (p) => edgePath(byId.get(p.source), byId.get(p.target)));
       if (ctx.tema) placeStars(ctx.tema);
       gNode.selectAll("g.node").attr("transform", (n) => `translate(${n.x},${n.y})`);
       gLbl.selectAll("text").attr("x", (n) => n.x + radius(n) + 7).attr("y", (n) => n.y + 4);
@@ -426,9 +506,9 @@
     }
     function resetZoom() { svg.transition().duration(500).call(zoom.transform, d3.zoomIdentity); }
     function highlightPair(a, b) {
-      gPot.selectAll("line").interrupt().attr("stroke-opacity", (p) => (p.source === a && p.target === b ? 1 : 0.05));
+      gPot.selectAll("path").interrupt().attr("stroke-opacity", (p) => (p.source === a && p.target === b ? 1 : 0.05));
       gNode.selectAll("g.node").interrupt().style("opacity", (n) => (n.id === a || n.id === b ? 1 : 0.18));
-      gCo.selectAll("line:not(.exiting)").interrupt().attr("stroke-opacity", 0.04);
+      gCo.selectAll("path:not(.exiting)").interrupt().attr("stroke-opacity", 0.04);
     }
     function highlightNode(id) { ctx.hover = id; applyStyles(false); }
     function resize() { size(); render(0.3); }

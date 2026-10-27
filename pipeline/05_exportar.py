@@ -121,6 +121,17 @@ write_json(sim, STATIC_DATA / "similarity.json")
 write_json(metrics, STATIC_DATA / "metrics_by_year.json")
 write_json(deps, STATIC_DATA / "departamentos.json")
 
+# Publicaciones de cada persona para la ficha (se carga al primer clic): [título, slug, año, hiperautoría],
+# de la más reciente a la más antigua. El slug es la URL sin el prefijo común del portal.
+PREFIJO_PUB = "https://cris.utec.edu.pe/es/publications/"
+pubs_de = {p["id"]: [] for p in personas}
+for pb in sorted(pubs, key=lambda x: (-(x["year"] or 0), x["titulo"])):
+    slug = pb["url"][len(PREFIJO_PUB):] if pb["url"].startswith(PREFIJO_PUB) else pb["url"]
+    for i in pb["ids"]:
+        pubs_de[i].append([pb["titulo"], slug, pb["year"], int(pb["hyper"])])
+assert sum(map(len, pubs_de.values())) == sum(len(pb["ids"]) for pb in pubs)
+write_json({"prefijo": PREFIJO_PUB, "pubs": pubs_de}, STATIC_DATA / "publicaciones.json")
+
 # CSV planos para la entrega
 m26 = metrics[str(ANIO_REF)]["nodes"]
 ncsv = pd.DataFrame([{**{k: v for k, v in n.items() if k not in ("departamentos", "temas_top", "conceptos_top",

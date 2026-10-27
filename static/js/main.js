@@ -151,7 +151,19 @@
   const net = UV.createNetwork(ctx, handlers);
 
   // ---------- render ----------
-  function renderPanel() { UV.renderPanel(ctx, handlers); }
+  // Publicaciones de cada persona (ficha): se descargan la primera vez que se abre una ficha
+  let cargaPubs = null;
+  function cargarPubs() {
+    cargaPubs = cargaPubs || fetch(DATA + "publicaciones.json", { cache: "no-cache" })
+      .then((r) => { if (!r.ok) throw new Error("publicaciones.json"); return r.json(); })
+      .then((d) => { ctx.pubsDe = d; })
+      .catch(() => { ctx.pubsDe = { error: true }; })
+      .finally(() => { if (state.selected) renderPanel(); });
+  }
+  function renderPanel() {
+    if (state.selected && !ctx.pubsDe) cargarPubs();
+    UV.renderPanel(ctx, handlers);
+  }
   function render(reheat) {
     net.render(reheat);
     renderPanel();
