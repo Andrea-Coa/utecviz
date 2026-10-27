@@ -155,8 +155,8 @@
     const rows = ctx.comms.map((c) => {
       const comp = Object.entries(c.composicion).map(([d, k]) => {
         const z = ctx.zones.find((x) => x.unidades.includes(d));
-        return `<span style="white-space:nowrap"><span class="dot" style="background:var(--c${z ? z.color : 0})"></span> ${esc(short(d))} ${k}</span>`;
-      }).join(" · ");
+        return `<span class="dep"><span class="dot" style="background:var(--c${z ? z.color : 0})"></span><span>${esc(short(d))}&nbsp;${k}</span></span>`;
+      }).join("");
       return `<tr><td><b>C${c.id}</b></td><td class="num">${c.size}</td><td>${comp}</td><td class="num">${Math.round(c.pureza * 100)} %</td></tr>`;
     }).join("");
     const f = (v) => (v == null ? "—" : UV.dec(v));
