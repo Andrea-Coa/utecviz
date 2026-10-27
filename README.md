@@ -21,6 +21,19 @@ Los datos ya calculados están en `static/data/`. D3 y la tipografía se sirven 
 
 **T5 necesita internet la primera vez**: al arrancar, la app descarga el modelo `intfloat/multilingual-e5-base` (~1 GB, queda en la caché de Hugging Face) y lo carga en segundo plano (1–2 min; luego cada búsqueda tarda ~50 ms). Mientras tanto el panel dice «Buscando…». Sin `sentence-transformers`/`torch` instalados, T1–T4 funcionan igual y T5 muestra un aviso.
 
+### Publicar en GitHub Pages (con T5 en Hugging Face Spaces)
+
+GitHub Pages solo sirve archivos: T1–T4 funcionan tal cual, pero T5 necesita ejecutar el modelo. Por eso la página va en Pages y la API de T5 en un **Space de Hugging Face** (gratis, Docker). No hay llaves ni secretos: el Space corre `tema.py` con el modelo descargado en su imagen. Tiene CORS limitado a `andrea-coa.github.io`, un máximo de 30 búsquedas por minuto por IP y temas de hasta 300 caracteres.
+
+```bash
+python deploy/precalcular_t5.py                 # respaldo: static/data/tema_precalc.json
+python deploy/preparar_space.py                 # dist/space/: carpeta para subir al Space
+# (subir dist/space/ al Space de Hugging Face, SDK Docker)
+python deploy/build_pages.py --api https://<usuario>-<space>.hf.space/api/tema   # docs/
+```
+
+Pages se activa en *Settings → Pages → Deploy from a branch → `main` / `/docs`*. Si el Space está dormido (sin uso por ~48 h) o no responde en 5 s, la página muestra el **resultado precalculado** más cercano: hay 26 habilidades, 325 pares de habilidades y 24 temas de ejemplo, y en el texto libre se detectan las habilidades por palabras clave. Ese resultado se marca como «aproximado» y se reemplaza solo cuando responde el Space. Además, al abrir la página se le envía un pedido para que despierte.
+
 ### Pipeline (opcional: regenera `static/data/`)
 
 ```bash

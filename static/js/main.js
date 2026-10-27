@@ -228,21 +228,61 @@
     $("#temaClear").hidden = !t;
     if (!t) { temaPeticion++; temaInput.value = ""; }
   }
-  async function buscarTema(q, intento = 0) {
+  // La búsqueda exacta la hace el servidor: app.py en local (UV.api = "api/tema") o el Space de Hugging Face en
+  // GitHub Pages (UV.api = su URL). Si no responde en ESPERA_MS (p. ej. el Space está dormido) o falla, se muestra
+  // el resultado precalculado más cercano (static/data/tema_precalc.json, ver deploy/precalcular_t5.py) y, si
+  // después llega el exacto, lo reemplaza.
+  const API = UV.api || "api/tema", ESPERA_MS = 5000;
+  const sinTildes = (s) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+  let precalc = null;
+  const cargarPrecalc = () => precalc || (precalc = fetch(UV.base + "data/tema_precalc.json", { cache: "no-cache" })
+    .then((r) => (r.ok ? r.json() : null)).catch(() => null));
+  async function aproximado(q) {
+    const P = await cargarPrecalc();
+    if (!P) return null;
+    const t = sinTildes(q);
+    let key = P.ejemplos[t] || (P.habilidades.find((h) => sinTildes(h.nombre) === t) || {}).nombre;
+    if (!key) {   // habilidades que menciona el texto: las 2 primeras en aparecer, en el orden del catálogo
+      const hits = P.habilidades.map((h, i) => { const m = new RegExp(h.re).exec(t); return m ? { i, pos: m.index } : null; })
+        .filter(Boolean).sort((a, b) => a.pos - b.pos).slice(0, 2).sort((a, b) => a.i - b.i);
+      if (!hits.length) return null;
+      key = hits.map((h) => P.habilidades[h.i].nombre).join(" + ");
+    }
+    const r = P.res[key];
+    if (!r) return null;
+    return { ...r, q, aprox: key.startsWith("ej:") ? null : r.q,
+      candidatos: r.candidatos.map((c) => ({ ...c, pubs: c.pubs.map((k) => P.pubs[k]) })) };
+  }
+  async function buscarTema(q) {
     q = q.trim(); if (!q) return;
-    const id = ++temaPeticion;
+    const id = ++temaPeticion, vigente = () => id === temaPeticion;
     stop(); setPotential(false); state.selected = null;
     setTema({ q, cargando: true }); render(0);
-    let r;
-    try {
-      const resp = await fetch("api/tema?q=" + encodeURIComponent(q));
-      r = await resp.json();
-    } catch (e) { r = { error: "No se pudo contactar al servidor." }; }
-    if (id !== temaPeticion) return;   // llegó otra búsqueda mientras tanto
-    if (r.candidatos) { setTema(r); net.resetZoom(); render(0); return; }
-    if (r.cargando && intento < 60) { setTimeout(() => { if (id === temaPeticion) buscarTema(q, intento + 1); }, 3000); return; }
-    setTema({ q, error: r.error || "El modelo no está disponible." }); render(0);
+    let mostrado = false;   // ya hay un resultado precalculado en pantalla
+    const mostrar = (r) => { setTema(r); if (!mostrado) net.resetZoom(); mostrado = true; render(0); };
+    const respaldo = setTimeout(async () => {
+      const a = await aproximado(q);
+      if (a && vigente() && state.tema && !state.tema.candidatos) mostrar({ ...a, esperando: true });
+    }, ESPERA_MS);
+    let error = null;
+    for (let intento = 0; intento < 60; intento++) {
+      let r;
+      try { r = await (await fetch(API + "?q=" + encodeURIComponent(q))).json(); }
+      catch (e) { r = { error: "No se pudo contactar al servidor de búsqueda." }; }
+      if (!vigente()) { clearTimeout(respaldo); return; }   // llegó otra búsqueda mientras tanto
+      if (r.candidatos) { clearTimeout(respaldo); mostrar(r); return; }
+      if (!r.cargando) { error = r.error || "El modelo no está disponible."; break; }
+      await new Promise((ok) => setTimeout(ok, 3000));   // el modelo se está cargando: reintentar
+      if (!vigente()) { clearTimeout(respaldo); return; }
+    }
+    clearTimeout(respaldo);
+    const a = await aproximado(q);
+    if (!vigente()) return;
+    if (a) mostrar({ ...a, esperando: false });
+    else { setTema({ q, error: error || "El servidor no respondió." }); render(0); }
   }
+  // en GitHub Pages el Space puede estar dormido: se le avisa apenas abre la página para que despierte
+  if (/^https?:/.test(API)) fetch(API).catch(() => {});
   $("#temaForm").addEventListener("submit", (ev) => { ev.preventDefault(); buscarTema(temaInput.value); });
   $("#temaClear").addEventListener("click", () => handlers.clearTema());
   // borrar el texto del campo (también con la ✕ nativa del input) quita el tema

@@ -231,20 +231,10 @@ def facetas(d, m, q):
     return sorted(mejor, key=lambda h: -mejor[h])[:MAX_FACETAS]
 
 
-def buscar(q):
-    """Lista única ordenada por cercanía al tema completo (candidatos del tema + los 2–3 expertos de cada faceta),
-    y en cada persona, las facetas del tema en las que destaca (z ≥ Z_ETIQUETA en esa habilidad)."""
+def _resultado(d, q, v, hs):
+    """Lista única ordenada por cercanía al vector del tema `v` (candidatos del tema + los 2–3 expertos de cada
+    faceta `hs`), y en cada persona, las facetas en las que destaca (z ≥ Z_EXPERTO, o z ≥ Z_ETIQUETA con evidencia)."""
     import numpy as np
-    with _lock:
-        m, d = _st["modelo"], _st["datos"]
-    if m is None:
-        return None
-    hs = facetas(d, m, q)
-    nombres = [h.lower() for h in HABILIDADES]
-    if q.strip().lower() in nombres:        # habilidad del catálogo: se busca por su descripción, no por el nombre corto
-        v = d["A"][nombres.index(q.strip().lower())]
-    else:
-        v = m.encode(["query: " + q], normalize_embeddings=True)[0]
     score, top = _puntaje(d, v)
     zh = {h: _zs(d["habilidad"][h][0]) for h in hs}
     sel = {c["id"] for c in _seleccion(d, score, top, Z_MIN, N_MIN, N_MAX)}
@@ -260,3 +250,30 @@ def buscar(q):
                         if zh[h][j] >= Z_EXPERTO or (zh[h][j] >= Z_ETIQUETA and ev[h] > 0)]
         lista.append(c)
     return {"q": q, "candidatos": lista, "facetas": [list(HABILIDADES)[h] for h in hs]}
+
+
+def buscar(q):
+    with _lock:
+        m, d = _st["modelo"], _st["datos"]
+    if m is None:
+        return None
+    hs = facetas(d, m, q)
+    nombres = [h.lower() for h in HABILIDADES]
+    if q.strip().lower() in nombres:        # habilidad del catálogo: se busca por su descripción, no por el nombre corto
+        v = d["A"][nombres.index(q.strip().lower())]
+    else:
+        v = m.encode(["query: " + q], normalize_embeddings=True)[0]
+    return _resultado(d, q, v, hs)
+
+
+def buscar_habilidades(hs):
+    """Tema formado por habilidades del catálogo (índices): vector = promedio normalizado de sus descripciones y
+    facetas = esas habilidades. Lo usa deploy/precalcular_t5.py para el respaldo sin servidor."""
+    import numpy as np
+    with _lock:
+        d = _st["datos"]
+    if d is None:
+        return None
+    v = d["A"][list(hs)].sum(axis=0)
+    v = v / np.linalg.norm(v)
+    return _resultado(d, " + ".join(list(HABILIDADES)[h] for h in hs), v, list(hs) if len(hs) > 1 else [])

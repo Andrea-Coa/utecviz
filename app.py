@@ -29,7 +29,7 @@ def asset_version():
 
 @app.route("/")
 def index():
-    return render_template("index.html", habilidades=list(tema.HABILIDADES))
+    return render_template("index.html", habilidades=list(tema.HABILIDADES), api_url="api/tema")
 
 
 @app.route("/api/tema")

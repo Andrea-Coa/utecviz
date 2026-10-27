@@ -142,7 +142,7 @@
 </div>
 
 <script src="{{ asset('vendor/d3.v7.9.0.min.js') }}"></script>
-<script>window.UV = { base: "{{ url_for('static', filename='') }}" };</script>
+<script>window.UV = { base: "{{ url_for('static', filename='') }}", api: "{{ api_url }}" };</script>
 <script src="{{ asset('js/network.js') }}"></script>
 <script src="{{ asset('js/panel.js') }}"></script>
 <script src="{{ asset('js/main.js') }}"></script>

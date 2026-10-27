@@ -104,7 +104,9 @@
     const t = ctx.state.tema, tm = ctx.tema;
     const quitar = `<button class="mini-btn" type="button" data-cleartema>Quitar ✕</button>`;
     if (t.cargando) return box("Equipo para un tema", `<p class="hint">Buscando docentes cercanos a «${esc(t.q)}»… La primera búsqueda puede tardar mientras se carga el modelo.</p>`, quitar);
-    if (t.error) return box("Equipo para un tema", `<p class="hint">No se pudo buscar el tema: ${esc(t.error)}.<br>
+    if (t.error) return box("Equipo para un tema", /^https?:/.test(UV.api || "")
+      ? `<p class="hint">El servidor de búsqueda no respondió y «${esc(t.q)}» no está entre los temas precalculados. Prueba con una habilidad de la lista (o una frase que la mencione), o vuelve a intentar en un minuto: el servidor puede estar despertando.</p>`
+      : `<p class="hint">No se pudo buscar el tema: ${esc(t.error)}.<br>
       Instala las dependencias con <code>pip install -r requirements.txt</code> y reinicia <code>flask run</code>.</p>`, quitar);
     const nombres = (ids) => ids.map((i) => esc(ctx.byId.get(i).corto)).join(", ");
     const lista = (cs) => `<ul class="coauthors tema-cand">${cs.map((c) => `<li>
@@ -122,9 +124,12 @@
       tm.puentes.size ? `podrían presentarlos: <b>${nombres([...tm.puentes])}</b> (camino corto en la red)` : "",
       tm.aislados.length ? `sin camino corto hasta otro del equipo: ${nombres(tm.aislados)}` : "",
     ].filter(Boolean).join("; ");
+    const aviso = t.aprox ? `<p class="hint aviso">Resultado <b>aproximado</b>, precalculado para «${esc(t.aprox)}». ${t.esperando
+      ? "El servidor de búsqueda está despertando; se reemplaza solo cuando responda."
+      : "El servidor de búsqueda no respondió: la búsqueda exacta está en la versión local."}</p>` : "";
     const nota = `<p class="hint">% = relativo al más cercano. Puntaje: sus 3 publicaciones más parecidas, pesando más la mejor (0,6 / 0,3 / 0,1; 75 %) y su perfil (25 %), con el modelo de embeddings de T4. Mejor en inglés: el 97 % de las publicaciones lo está.</p>`;
     if (!tm.facetas.length) {
-      const body = `<p class="tema-sum"><b>${tm.cand.length}</b> docentes de <b>${deps}</b> departamento${deps > 1 ? "s" : ""} con producción cercana a «${esc(tm.q)}». En ${ctx.year}: ${red}.</p>
+      const body = `${aviso}<p class="tema-sum"><b>${tm.cand.length}</b> docentes de <b>${deps}</b> departamento${deps > 1 ? "s" : ""} con producción cercana a «${esc(tm.q)}». En ${ctx.year}: ${red}.</p>
         ${lista(tm.cand)}${nota}`;
       return box("Equipo para un tema", body, quitar);
     }
@@ -134,7 +139,7 @@
       ...tm.enlaces.map((e) => `${esc(e.a)} ↔ ${esc(e.b)}: ${enlace(e)}`),
       tm.multi.length ? `cubre${tm.multi.length > 1 ? "n" : ""} más de una faceta: <b>${nombres(tm.multi)}</b>` : "nadie cubre más de una faceta",
     ];
-    const body = `<p class="tema-sum">«${esc(tm.q)}» combina <b>${tm.facetas.length} facetas</b>: ${tm.facetas.map((f) => `★ ${esc(f.nombre)}`).join(" · ")}.
+    const body = `${aviso}<p class="tema-sum">«${esc(tm.q)}» combina <b>${tm.facetas.length} facetas</b>: ${tm.facetas.map((f) => `★ ${esc(f.nombre)}`).join(" · ")}.
         <b>${tm.C.size}</b> docentes de <b>${deps}</b> departamento${deps > 1 ? "s" : ""}.</p>
       <ul class="cobertura">${cobertura.map((x) => `<li>${x}</li>`).join("")}</ul>
       <p class="hint">En ${ctx.year}: ${red}.</p>
