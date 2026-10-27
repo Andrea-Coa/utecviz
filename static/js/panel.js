@@ -196,9 +196,7 @@
       ${sw(`<line x1="2" y1="10" x2="36" y2="10" stroke="${lig}" stroke-width="2.5"/>`)}<span><b>Línea clara</b> = mismo departamento</span>`;
     if (st.potential) h += `${sw(`<line x1="2" y1="10" x2="36" y2="10" stroke="${pot}" stroke-width="2.4" stroke-dasharray="6 4"/>`)}<span><b>Punteada roja</b> = colaboración potencial</span>`;
     if (ctx.tema) h += `${sw(`<line x1="10" y1="10" x2="36" y2="10" stroke="${tema}" stroke-width="3.5" stroke-linecap="round" stroke-dasharray="1 5"/><path transform="translate(8,10)" d="${d3.symbol(d3.symbolStar, 110)()}" fill="${tema}"/>`)}<span><b>Estrella</b> = tema${ctx.tema.facetas.length ? " y sus facetas" : ""}; puntos más gruesos = más cercano</span>`;
-    h += `</div><p class="lg-pos">${st.group === "dept"
-      ? "<b>Posición:</b> zona del departamento; quien colabora fuera queda <b>entre zonas</b>."
-      : "<b>Posición:</b> por comunidad (Louvain); el borde sigue siendo el departamento."}</p>`;
+    h += `</div>`;
     return h;
   };
 
@@ -210,7 +208,6 @@
     if (st.potential) h += pares(ctx);
     if (st.group === "comm") h += comunidades(ctx);
     h += ranking(ctx);
-    if (!st.selected) h += `<p class="hint">Haz clic en un nodo, en un nombre del ranking o usa el buscador para ver la ficha y la red personal.</p>`;
     const side = document.getElementById("side");
     const scroll = side.scrollTop;
     side.innerHTML = h;

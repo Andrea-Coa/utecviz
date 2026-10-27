@@ -158,16 +158,15 @@
     if (!$("#tablaWrap").hidden) renderTable();
   }
 
-  let legendOpen = window.innerWidth > 860;
+  // dos cajas plegables dentro de la red: «cómo leer» (cambia con los botones) y los departamentos (clic = ocultar)
+  const lgOpen = { leer: window.innerWidth > 860, deps: window.innerWidth > 860 };
   function renderLegend() {
     const lg = $("#legend");
-    // leyenda dentro de la red: primero «cómo leer» (lo que cambia con los botones), luego los departamentos
-    lg.innerHTML = `<button type="button" class="lg-title" id="lgToggle" aria-expanded="${legendOpen}">${legendOpen ? "▾" : "▸"} Cómo leer la red</button>`
-      + (!legendOpen ? "" : `<div class="lg-body">${UV.leerHtml(ctx)}
-        <div class="lg-sub">Departamento · clic para ocultar</div>
-        <div class="lg-deps">${zones.map((z) => `<button type="button" data-zona="${z.zona}" aria-pressed="${!state.hiddenZones.has(z.zona)}" title="${z.zona} (${z.n})">
-          <span class="dot" style="background:var(--c${z.color})"></span><span class="nm">${z.zona}</span></button>`).join("")}</div></div>`);
-    $("#lgToggle").addEventListener("click", () => { legendOpen = !legendOpen; renderLegend(); });
+    const caja = (k, titulo, cuerpo) => `<div class="lg-box"><button type="button" class="lg-title" data-lg="${k}" aria-expanded="${lgOpen[k]}">${lgOpen[k] ? "▾" : "▸"} ${titulo}</button>${lgOpen[k] ? `<div class="lg-body">${cuerpo}</div>` : ""}</div>`;
+    lg.innerHTML = caja("leer", "Cómo leer la red", UV.leerHtml(ctx))
+      + caja("deps", "Departamentos", `<div class="lg-deps">${zones.map((z) => `<button type="button" data-zona="${z.zona}" aria-pressed="${!state.hiddenZones.has(z.zona)}" title="${z.zona} (${z.n}) · clic para ocultar o mostrar">
+          <span class="dot" style="background:var(--c${z.color})"></span><span class="nm">${z.zona}</span></button>`).join("")}</div>`);
+    lg.querySelectorAll("[data-lg]").forEach((b) => b.addEventListener("click", () => { lgOpen[b.dataset.lg] = !lgOpen[b.dataset.lg]; renderLegend(); }));
     lg.querySelectorAll("button[data-zona]").forEach((b) => b.addEventListener("click", () => {
       const z = b.dataset.zona;
       state.hiddenZones.has(z) ? state.hiddenZones.delete(z) : state.hiddenZones.add(z);
