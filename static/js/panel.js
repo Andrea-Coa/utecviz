@@ -215,7 +215,7 @@
     const st = ctx.state, sw = (inner) => `<svg width="34" height="18" viewBox="0 0 38 20" aria-hidden="true">${inner}</svg>`;
     const ink = css("--edge-cross"), lig = css("--edge-in"), ring = css("--ring"), pot = css("--potential"), c1 = css("--c1"), tema = css("--tema");
     let h = `<div class="enc">
-      ${sw(`<circle cx="9" cy="10" r="4.5" fill="${c1}"/><circle cx="26" cy="10" r="8.5" fill="${c1}"/>`)}<span><b>Tamaño</b> = ${st.size === "h" ? "índice h (Scopus)" : "publicaciones compartidas en UTEC"}</span>
+      ${sw(`<circle cx="9" cy="10" r="4.5" fill="${c1}"/><circle cx="26" cy="10" r="8.5" fill="${c1}"/>`)}<span><b>Tamaño</b> = ${ctx.tema ? "cercanía al tema (% del panel)" : st.size === "h" ? "índice h (Scopus)" : "publicaciones compartidas en UTEC"}</span>
       ${sw(`<circle cx="19" cy="10" r="7.5" fill="none" stroke="${c1}" stroke-width="3"/>`)}<span><b>Borde</b> = departamento (abajo)</span>`;
     if (st.rings) h += `${sw(`<circle cx="19" cy="10" r="5.5" fill="${c1}"/><circle cx="19" cy="10" r="9" fill="none" stroke="${ring}" stroke-width="2.5"/>`)}<span><b>Anillo oscuro</b> = puente (betweenness)</span>`;
     h += `${sw(`<line x1="2" y1="10" x2="36" y2="10" stroke="${ink}" stroke-width="2.5"/>`)}<span><b>Línea oscura</b> = coautoría entre departamentos</span>

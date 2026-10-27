@@ -123,6 +123,7 @@
     cand.filter((c) => !facetas.some((f) => f.exp.includes(c))).forEach((c) => lines.push({ key: "c|" + c.id, from: centro, c }));
     ctx.tema = {
       q: t.q, C, puentes, edgeKeys, directas, cand, facetas, enlaces, stars, lines,
+      rel: new Map(cand.map((c) => [c.id, c.rel])),   // % del panel → tamaño del nodo mientras hay equipo
       multi: facetas.length ? cand.filter((c) => c.facetas.length > 1).map((c) => c.id) : [],
       aislados: ids.filter((x) => !conectados.has(x)),
     };
