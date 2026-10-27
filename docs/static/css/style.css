@@ -293,8 +293,14 @@ ol.rank .bar { height: 4px; background: var(--line); margin-top: 2px; }
 ol.rank .bar > i { display: block; height: 100%; background: var(--ink2); }
 ol.rank .n { color: var(--ink2); font-variant-numeric: tabular-nums; }
 .pairs li { grid-template-columns: 16px 1fr auto !important; }
-.score { font: 700 24px/1 Verdana, sans-serif; font-variant-numeric: tabular-nums; }
-.scores { display: flex; gap: 16px; }
+/* NMI / Q / ARI: mismo estilo que las cifras de la barra (letra pixelada a 16 px, etiqueta chica debajo) */
+.scores { display: grid; grid-template-columns: repeat(3, 1fr); border-top: 1px solid var(--line-2); border-bottom: 1px solid var(--line-2); }
+.scores > div { padding: 4px 3px 3px; text-align: center; }
+.scores > div + div { border-left: 1px dotted var(--line-2); }
+.scores .hint { margin: 2px 0 0; font-size: 9px; line-height: 1.25; }
+.score { font: 400 16px/1.1 "Silkscreen", "Courier New", monospace; color: var(--maroon); }
+:root[data-theme="dark"] .score { color: var(--link); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .score { color: var(--link); } }
 table.mini { width: 100%; border-collapse: collapse; font-size: 11px; margin-top: 6px; }
 table.mini th, table.mini td { text-align: left; padding: 3px; border-bottom: 1px solid var(--line); vertical-align: top; }
 table.mini th { color: var(--muted); font-weight: 700; }

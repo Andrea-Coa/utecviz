@@ -161,9 +161,9 @@
     }).join("");
     const f = (v) => (v == null ? "—" : UV.dec(v));
     const body = `<div class="scores">
-        <div><div class="score">${f(g.NMI)}</div><div class="hint">NMI comunidad ↔ dpto.<br>(0 = nada, 1 = idénticos)</div></div>
-        <div><div class="score">${f(g.Q)}</div><div class="hint">Modularidad Q<br>(&gt; 0,3 = grupos claros)</div></div>
-        <div><div class="score">${f(g.ARI)}</div><div class="hint">ARI</div></div></div>
+        <div><div class="score">${f(g.NMI)}</div><div class="hint">NMI vs. dpto.<br>(0 a 1)</div></div>
+        <div><div class="score">${f(g.Q)}</div><div class="hint">Modularidad Q<br>(&gt; 0,3 = clara)</div></div>
+        <div><div class="score">${f(g.ARI)}</div><div class="hint">ARI vs. dpto.<br>(0 a 1)</div></div></div>
       ${rows ? `<table class="mini"><thead><tr><th></th><th>n</th><th>Departamentos</th><th>Pureza</th></tr></thead><tbody>${rows}</tbody></table>`
         : `<p class="hint">Aún no hay comunidades de 3 o más personas en ${ctx.year}.</p>`}
       <p class="hint">Pureza = % del departamento dominante. Solo ${g.n_en_comunidad} de ${ctx.nodes.length} docentes pertenecen a una comunidad; el resto aparece en el anillo exterior, junto a su departamento.</p>`;
