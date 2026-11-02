@@ -197,6 +197,14 @@
       return nb;
     }
     const visible = (id) => !ctx.state.hiddenZones.has(ctx.byId.get(id).zona);
+    // Vista "Puentes": los 5 puentes del año y sus coautores directos se ven al 100 %; el resto queda atenuado,
+    // para que se lea entre quiénes está cada puente.
+    const modoPuentes = () => ctx.state.rings && !ctx.state.potential && !ctx.tema;
+    function vecindadPuentes() {
+      const b = new Set(ctx.topB), v = new Set(ctx.topB);
+      ctx.active.forEach((e) => { if (b.has(e.source)) v.add(e.target); if (b.has(e.target)) v.add(e.source); });
+      return { b, v };
+    }
 
     function edgeOpacity(e, sel, hov) {
       if (!visible(e.source) || !visible(e.target)) return 0.04;
@@ -205,6 +213,7 @@
       if (sel) return touches(sel) ? 0.95 : 0.05;
       if (hov) return touches(hov) ? 0.95 : 0.08;
       if (ctx.tema) return ctx.tema.edgeKeys.has(e.key) ? 1 : 0.05;
+      if (modoPuentes()) { const { b } = vecindadPuentes(); return b.has(e.source) || b.has(e.target) ? 1 : 0.1; }
       return e.cross ? 0.75 : 0.9;
     }
     const enEquipo = (id) => ctx.tema && (ctx.tema.C.has(id) || ctx.tema.puentes.has(id));
@@ -213,6 +222,7 @@
       if (sel) return nb.has(n.id) ? 1 : 0.15;
       if (hov) return hovNb.has(n.id) ? 1 : 0.35;
       if (ctx.tema) return enEquipo(n.id) ? 1 : 0.13;
+      if (modoPuentes()) return vecindadPuentes().v.has(n.id) ? 1 : 0.22;
       return 1;
     }
     function potOpacity(p, sel) {
@@ -235,7 +245,7 @@
     // ---------- render completo ----------
     function render(reheat) {
       const st = ctx.state, sel = st.selected;
-      const ink = css("--edge-cross"), light = css("--edge-in"), ringC = css("--ring"), pot = css("--potential");
+      const ink = css("--edge-cross"), ringC = css("--ring"), pot = css("--potential");
       const wmax = ctx.WEDGEMAX;
 
       // coautorías: data join con clave estable
@@ -243,7 +253,8 @@
       co.exit().classed("exiting", true).interrupt().transition("salida").duration(300).attr("stroke-opacity", 0).remove();
       co.enter().append("path").attr("fill", "none").attr("stroke-linecap", "round").attr("stroke-opacity", 0)
         .merge(co)
-        .attr("stroke", (e) => (e.cross ? ink : light))
+        // entre departamentos: tinta oscura; dentro de un departamento: el color de ese departamento
+        .attr("stroke", (e) => (e.cross ? ink : colorOf(ctx.byId.get(e.source))))
         .attr("stroke-width", (e) => 1 + 4 * Math.sqrt(e.w / wmax));
       // coautorías: tooltip con las publicaciones en conjunto; clic → todas, con enlaces, en el panel
       const hit = gCoHit.selectAll("path").data(ctx.active, (e) => e.key);
@@ -297,8 +308,7 @@
           .on("start", (ev, d) => { if (!ev.active) sim.alphaTarget(0.2).restart(); d.fx = d.x; d.fy = d.y; })
           .on("drag", (ev, d) => { d.fx = ev.x; d.fy = ev.y; })
           .on("end", (ev, d) => { if (!ev.active) sim.alphaTarget(0); d.fx = null; d.fy = null; }))
-        .on("mouseenter", (ev, d) => { ctx.hover = d.id; showTip(ev, nodeTip(d)); applyStyles(false); })
-        .on("mousemove", moveTip)
+        .on("mouseenter", (ev, d) => { ctx.hover = d.id; tip.innerHTML = nodeTip(d); tip.style.opacity = 1; tipJuntoA(d, this_(ev)); applyStyles(false); })
         .on("mouseleave", () => { ctx.hover = null; hideTip(); applyStyles(false); })
         .on("click", (ev, d) => { ev.stopPropagation(); on.select(ctx.state.selected === d.id ? null : d.id); });
       ne.append("circle").attr("class", "ring").attr("fill", "none");
@@ -331,7 +341,7 @@
 
       // etiquetas de texto: top 5 puentes, top 3 pares potenciales, selección y su vecindario
       let lab = [];
-      if (st.rings && !st.potential) lab = ctx.topB.slice();
+      // con Puentes activo no se ponen nombres: se leen al pasar el mouse
       if (st.potential) lab = [...new Set(ctx.pairs.slice(0, 3).flatMap((p) => [p.source, p.target]))];
       if (tm) lab = [...tm.C, ...tm.puentes];
       if (sel) { const nb = [...neighborhood()].filter((i) => i !== sel); lab = [sel, ...nb].slice(0, 12); }
@@ -445,6 +455,55 @@
       const s = hier.sectores.find((d) => d.zona === z), R = hier.Rout + hier.rOut + 20;
       return [hier.CX + Math.cos(s.mid) * R, hier.CY + Math.sin(s.mid) * R, s.mid];
     }
+    // Etiquetas sin encimarse: cada nombre prueba posiciones alrededor de su nodo (derecha, izquierda, arriba,
+    // abajo, diagonales y luego más lejos) y se queda con la que no choca con otros nombres ni con los nodos visibles.
+    // Primero se ubica la persona seleccionada y luego los nodos más grandes.
+    const anchoLbl = new Map();
+    function placeLabels() {
+      const sel = gLbl.selectAll("text");
+      if (sel.empty()) return;
+      const items = [];
+      sel.each(function (n) {
+        const k = n.id + "|" + this.textContent;
+        if (!anchoLbl.has(k)) anchoLbl.set(k, this.getComputedTextLength() || this.textContent.length * 7);
+        items.push({ el: this, n, w: anchoLbl.get(k) });
+      });
+      const conNombre = new Set(items.map((it) => it.n.id));
+      const nodos = ctx.nodes.filter((n) => conNombre.has(n.id)).map((n) => ({ x: n.x, y: n.y, r: radius(n) + 3 }));
+      items.sort((a, b) => (b.n.id === ctx.state.selected) - (a.n.id === ctx.state.selected) || radius(b.n) - radius(a.n));
+      const puestos = [], LH = 12;
+      const choca = (b1, b2) => Math.max(0, Math.min(b1[2], b2[2]) - Math.max(b1[0], b2[0])) * Math.max(0, Math.min(b1[3], b2[3]) - Math.max(b1[1], b2[1]));
+      const tapaNodo = (bx) => nodos.reduce((s, c) => {
+        const dx = Math.max(bx[0] - c.x, 0, c.x - bx[2]), dy = Math.max(bx[1] - c.y, 0, c.y - bx[3]);
+        return s + (dx * dx + dy * dy < c.r * c.r ? 1 : 0);
+      }, 0);
+      for (const it of items) {
+        const { n, w } = it, r = radius(n);
+        let best = null, bestS = Infinity, i = 0;
+        for (const extra of [0, 10, 22]) {
+          const g = r + 6 + extra, d = (r + 4 + extra) * 0.72;
+          const cands = [
+            [n.x + g, n.y + 4, "start"], [n.x - g, n.y + 4, "end"],
+            [n.x, n.y - g + 2, "middle"], [n.x, n.y + g + 9, "middle"],
+            [n.x + d, n.y - d, "start"], [n.x + d, n.y + d + 9, "start"],
+            [n.x - d, n.y - d, "end"], [n.x - d, n.y + d + 9, "end"],
+          ];
+          for (const [x, y, an] of cands) {
+            const x0 = an === "start" ? x : an === "end" ? x - w : x - w / 2;
+            const bx = [x0 - 2, y - LH + 2, x0 + w + 2, y + 3];
+            let sc = i++ * 0.5;
+            for (const q of puestos) sc += choca(bx, q) * 4;
+            sc += tapaNodo(bx) * 60;
+            if (bx[0] < 0 || bx[2] > W || bx[1] < 0 || bx[3] > H) sc += 500;
+            if (sc < bestS) { bestS = sc; best = { x, y, an, bx }; }
+          }
+          if (bestS < 20) break;   // ya hay un lugar libre cerca: no alejar el nombre
+        }
+        puestos.push(best.bx);
+        d3.select(it.el).attr("x", best.x).attr("y", best.y).attr("text-anchor", best.an);
+      }
+    }
+
     function ticked() {
       const byId = ctx.byId;
       gCo.selectAll("path").attr("d", (e) => edgePath(byId.get(e.source), byId.get(e.target)));
@@ -452,7 +511,7 @@
       gPot.selectAll("path").attr("d", (p) => edgePath(byId.get(p.source), byId.get(p.target)));
       if (ctx.tema) placeStars(ctx.tema);
       gNode.selectAll("g.node").attr("transform", (n) => `translate(${n.x},${n.y})`);
-      gLbl.selectAll("text").attr("x", (n) => n.x + radius(n) + 7).attr("y", (n) => n.y + 4);
+      placeLabels();
       gHull.selectAll("g.hull").each(function ([c, ms]) {
         const pts = [];
         ms.forEach((n) => { const r = radius(n) + 12; for (let k = 0; k < 10; k++) { const a = k / 10 * 2 * Math.PI; pts.push([n.x + Math.cos(a) * r, n.y + Math.sin(a) * r]); } });
@@ -474,6 +533,44 @@
       tip.style.left = Math.max(4, x) + "px"; tip.style.top = Math.max(4, y) + "px";
     }
     function hideTip() { tip.style.opacity = 0; }
+    const this_ = (ev) => ev.currentTarget;
+    // Tooltip de un docente: se prueba alrededor del nodo y se elige el lugar que tapa menos sus coautorías
+    // (puntos muestreados sobre sus líneas y los nodos de sus coautores). Queda fijo mientras el mouse esté encima.
+    function tipJuntoA(d, el) {
+      const r = chartEl.getBoundingClientRect(), b = el.getBoundingClientRect();
+      const cx = b.left + b.width / 2 - r.left, cy = b.top + b.height / 2 - r.top, rad = b.width / 2;
+      const tw = tip.offsetWidth || 260, th = tip.offsetHeight || 150;
+      const pts = [];
+      gCo.selectAll("path:not(.exiting)").filter((e) => e.source === d.id || e.target === d.id).each(function () {
+        const L = this.getTotalLength(), M = this.getScreenCTM();
+        for (let i = 0; i <= 40; i++) {
+          const q = this.getPointAtLength((L * i) / 40);
+          pts.push([M.a * q.x + M.c * q.y + M.e - r.left, M.b * q.x + M.d * q.y + M.f - r.top]);
+        }
+      });
+      gNode.selectAll("g.node").filter((n) => n.id !== d.id && ctx.active.some((e) =>
+        (e.source === d.id && e.target === n.id) || (e.target === d.id && e.source === n.id))).each(function () {
+        const q = this.getBoundingClientRect();
+        for (const fx of [0, 0.5, 1]) for (const fy of [0, 0.5, 1]) pts.push([q.left + q.width * fx - r.left, q.top + q.height * fy - r.top]);
+      });
+      const g = rad + 10, cands = [];
+      // a la derecha, izquierda, abajo, arriba y diagonales; también un poco más lejos
+      for (const k of [1, 2.2]) {
+        const o = g * k;
+        cands.push([cx + o, cy - th / 2], [cx - o - tw, cy - th / 2], [cx - tw / 2, cy + o], [cx - tw / 2, cy - o - th],
+          [cx + o * 0.7, cy + o * 0.7], [cx - o * 0.7 - tw, cy + o * 0.7], [cx + o * 0.7, cy - o * 0.7 - th], [cx - o * 0.7 - tw, cy - o * 0.7 - th]);
+      }
+      let best = null, bestS = Infinity;
+      cands.forEach(([x, y], i) => {
+        const fuera = Math.max(0, 4 - x) + Math.max(0, x + tw - r.width + 4) + Math.max(0, 4 - y) + Math.max(0, y + th - r.height + 4);
+        let tapa = 0;
+        for (const [px, py] of pts) if (px > x - 6 && px < x + tw + 6 && py > y - 6 && py < y + th + 6) tapa++;
+        const s = tapa * 10 + fuera * 5 + i * 0.5;   // a igualdad, el orden de preferencia (cerca y a la derecha)
+        if (s < bestS) { bestS = s; best = [x, y]; }
+      });
+      tip.style.left = Math.min(Math.max(4, best[0]), r.width - tw - 4) + "px";
+      tip.style.top = Math.min(Math.max(4, best[1]), r.height - th - 4) + "px";
+    }
     const fmtBC = (v) => (v === 0 ? "0 %" : v < 0.001 ? "< 0,1 %" : (v * 100).toFixed(1).replace(".", ",") + " %");
     function nodeTip(n) {
       const m = n.m, top = ctx.topB.includes(n.id);

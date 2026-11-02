@@ -58,7 +58,7 @@
         <span class="seg">
           <button type="button" data-group="dept" aria-pressed="true">Departamento</button><button type="button" data-group="comm" aria-pressed="false">Comunidad</button>
         </span>
-        <button type="button" class="btn btn-hier btn-mini" id="hierBtn" aria-pressed="false" title="Vista jerárquica: departamentos en sectores de un círculo; las coautorías se agrupan por departamento">◔ Jerárquico</button>
+        <button type="button" class="btn btn-hier btn-mini" id="hierBtn" aria-pressed="true" title="Vista jerárquica: departamentos en sectores de un círculo; las coautorías se agrupan por departamento">◔ Jerárquico</button>
       </div>
       <div class="ctl" role="group" aria-label="Tamaño del nodo">
         <span class="ctl-lbl">Tamaño</span>
@@ -67,7 +67,7 @@
         </span>
       </div>
       <div class="ctl">
-        <button class="btn toggle" id="ringBtn" type="button" aria-pressed="true">◎ Puentes</button>
+        <button class="btn toggle" id="ringBtn" type="button" aria-pressed="false">◎ Puentes</button>
         <button class="btn toggle" id="potBtn" type="button" aria-pressed="false">┅ Colaboraciones potenciales</button>
       </div>
       <div class="ctl" id="potCtl" hidden>
@@ -100,6 +100,7 @@
           <button class="btn btn-mini" id="fullBtn" type="button" title="Ver la red en pantalla completa, con los filtros aplicados">⛶ Pantalla completa</button>
           <button class="btn btn-mini" id="pngBtn" type="button" title="Descargar la vista actual de la red como imagen PNG">⤓ Descargar imagen</button>
         </div>
+        <div class="cargando" id="cargando" role="status">Cargando la red…</div>
         <div class="yearmark num" id="yearMark" aria-hidden="true">2026</div>
         <div class="legend" id="legend" aria-label="Leyenda: cómo leer la red y departamentos"></div>
         <div class="zoomhint" aria-hidden="true">Rueda: zoom · arrastrar: mover · clic: red personal · clic en una línea: publicaciones</div>
@@ -154,7 +155,7 @@
 </div>
 
 <script src="{{ asset('vendor/d3.v7.9.0.min.js') }}"></script>
-<script>window.UV = { base: "{{ url_for('static', filename='') }}", api: "{{ api_url }}" };</script>
+<script>window.UV = { base: "{{ url_for('static', filename='') }}", api: "{{ api_url }}", datos: "{{ datos_url or '' }}" };</script>
 <script src="{{ asset('js/network.js') }}"></script>
 <script src="{{ asset('js/panel.js') }}"></script>
 <script src="{{ asset('js/main.js') }}"></script>

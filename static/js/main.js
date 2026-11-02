@@ -7,16 +7,26 @@
   const $ = (s) => document.querySelector(s);
   const fmtInt = (v) => v.toLocaleString("es-ES");
   const DATA = UV.base + "data/";
-  const [nodes, edges, sim, metrics, zones, resumen] = await Promise.all(
-    ["nodes.json", "edges.json", "similarity.json", "metrics_by_year.json", "departamentos.json", "resumen.json"]
+  // Con Flask (UV.datos = "api/red") llega todo en una sola respuesta, validada al iniciar app.py y comprimida;
+  // en GitHub Pages (sin servidor) se leen los archivos estáticos.
+  async function cargarDatos() {
+    if (UV.datos) {
+      const r = await fetch(UV.datos);
+      if (!r.ok) throw new Error(`${UV.datos} respondió ${r.status}`);
+      const d = await r.json();
+      return [d.nodes, d.edges, d.similarity, d.metrics_by_year, d.departamentos, d.resumen];
+    }
+    return Promise.all(["nodes.json", "edges.json", "similarity.json", "metrics_by_year.json", "departamentos.json", "resumen.json"]
       .map((f) => fetch(DATA + f, { cache: "no-cache" }).then((r) => { if (!r.ok) throw new Error(f); return r.json(); })));
+  }
+  const [nodes, edges, sim, metrics, zones, resumen] = await cargarDatos();
 
   const YEARS = Object.keys(metrics).map(Number).sort((a, b) => a - b);
   const Y_MAX = YEARS[YEARS.length - 1];
 
   // ---------- estado centralizado ----------
   const state = {
-    year: Y_MAX, group: "dept", size: "wdeg", rings: true, potential: false, threshold: 0.50, crossOnly: true,
+    year: Y_MAX, group: "hier", size: "wdeg", rings: false, potential: false, threshold: 0.50, crossOnly: true,
     selected: null, edge: null, hiddenZones: new Set(), rankMode: "w", potRank: "sim",
     tema: null,   // T5: {q, cargando} | {q, error} | {q, candidatos} (respuesta de /api/tema)
   };
@@ -61,8 +71,53 @@
     ctx.comms = M.communities;
     ctx.bcMax = d3.max(nodes, (n) => n.m.bc) || 0;
     ctx.topB = nodes.filter((n) => n.m.bc > 0).sort((a, b) => b.m.bc - a.m.bc).slice(0, 5).map((n) => n.id);
+    ctx.corte = analizarCortes();
     computePairs();
     computeTema();
+  }
+  // Puentes, más allá del betweenness: para cada persona conectada, qué se rompe en la red del año si no estuviera.
+  //   trozos = tamaños de las partes en que queda su grupo (más de una = punto de corte);
+  //   fuera  = colegas que quedan fuera de la parte mayor;
+  //   pares  = pares de departamentos que pierden su única conexión (mismo cálculo que pipeline/05_exportar.py;
+//            si la persona es la única de su unidad, los pares con esa unidad no cuentan).
+  function analizarCortes() {
+    const adj = new Map(nodes.map((n) => [n.id, []]));
+    ctx.active.forEach((e) => { adj.get(e.source).push(e.target); adj.get(e.target).push(e.source); });
+    const dep = (i) => byId.get(i).departamento;
+    const componentes = (sin) => {   // componentes de la red sin el nodo `sin`
+      const visto = new Set([sin]), out = [];
+      for (const n of nodes) {
+        if (visto.has(n.id) || !adj.get(n.id).length) continue;
+        const c = [n.id]; visto.add(n.id);
+        for (let k = 0; k < c.length; k++) for (const v of adj.get(c[k])) if (!visto.has(v)) { visto.add(v); c.push(v); }
+        out.push(c);
+      }
+      return out;
+    };
+    const paresDep = (comps) => {
+      const s = new Set();
+      comps.forEach((c) => {
+        const ds = [...new Set(c.map(dep))].sort();
+        for (let a = 0; a < ds.length; a++) for (let b = a + 1; b < ds.length; b++) s.add(ds[a] + "\u0000" + ds[b]);
+      });
+      return s;
+    };
+    const base = componentes(null), pb = paresDep(base), compDe = new Map(), tamUnidad = d3.rollup(nodes, (v) => v.length, (n) => n.departamento);
+    base.forEach((c) => c.forEach((i) => compDe.set(i, c)));
+    const out = new Map();
+    nodes.forEach((n) => {
+      if (!adj.get(n.id).length) return;
+      const resto = componentes(n.id), pr = paresDep(resto), grupo = new Set(compDe.get(n.id));
+      const trozos = resto.filter((c) => grupo.has(c[0])).map((c) => c.length).sort((a, b) => b - a);
+      out.set(n.id, {
+        comp: grupo.size, trozos, fuera: grupo.size - 1 - (trozos[0] || 0),
+        // si es la única persona de su unidad, los pares con esa unidad se perderían por definición: no cuentan
+        pares: [...pb].filter((k) => !pr.has(k)).map((k) => k.split("\u0000"))
+          .filter((x) => tamUnidad.get(n.departamento) > 1 || !x.includes(n.departamento)),
+        deps: [...new Set(adj.get(n.id).map(dep))].filter((d) => d !== n.departamento),
+      });
+    });
+    return out;
   }
   // T5: candidatos del tema (lista única, ordenada por cercanía al tema completo) + qué los une en la red del año
   // (coautorías directas o caminos cortos con puentes). Con 2 o más facetas, cada faceta tiene su estrella y se
@@ -319,6 +374,7 @@
       try { r = await (await fetch(API + "?q=" + encodeURIComponent(q))).json(); }
       catch (e) { r = { error: "No se pudo contactar al servidor de búsqueda." }; }
       if (!vigente()) { clearTimeout(respaldo); return; }   // llegó otra búsqueda mientras tanto
+      if (r.sin_coincidencias) { clearTimeout(respaldo); setTema({ q, sinCoincidencias: r.desconocidas || [] }); render(0); return; }
       if (r.candidatos) { clearTimeout(respaldo); mostrar(r); return; }
       if (!r.cargando) { error = r.error || "El modelo no está disponible."; break; }
       await new Promise((ok) => setTimeout(ok, 3000));   // el modelo se está cargando: reintentar
@@ -386,8 +442,8 @@
     }
     stop(); state.selected = null; state.hiddenZones.clear(); setTema(null);
     if (state.year !== Y_MAX) { state.year = Y_MAX; yr.value = Y_MAX; yrOut.textContent = Y_MAX; mark.textContent = Y_MAX; setYearData(Y_MAX); }
-    if (t === "t1") { setPotential(false); setRings(false); state.rankMode = "w"; setGroupSilently("dept"); }
-    if (t === "t2") { setPotential(false); setRings(true); state.rankMode = "b"; setGroupSilently("dept"); }
+    if (t === "t1") { setPotential(false); setRings(false); state.rankMode = "w"; setGroupSilently("hier"); }
+    if (t === "t2") { setPotential(false); setRings(true); state.rankMode = "b"; setGroupSilently("hier"); }
     if (t === "t3") { setPotential(false); setRings(true); setGroupSilently("comm"); }
     if (t === "t4") { setPotential(true); state.crossOnly = true; $("#crossOnly").checked = true; computePairs(); setGroupSilently("dept"); }
     document.getElementById("red").scrollIntoView({ behavior: "smooth", block: "start" });
@@ -423,11 +479,25 @@
   $("#st-pubs").textContent = fmtInt(resumen.n_publicaciones);
   $("#st-cross").textContent = Math.round(resumen.pct_cross * 100) + " %";
   $("#st-comm").textContent = resumen.n_comunidades;
-  $("#findings").innerHTML = resumen.hallazgos.map((h) => `<li><b>${h.titulo}.</b> ${h.texto}</li>`).join("");
+  // [[id]] en el texto de un hallazgo = nombre clicable: abre la ficha de esa persona en la red
+  const persona = (id) => { const n = byId.get(id); return n ? `<button type="button" class="linkbtn" data-hsel="${id}">${n.nombre}</button>` : id; };
+  $("#findings").innerHTML = resumen.hallazgos.map((h) => `<li><b>${h.titulo}.</b> ${h.texto.replace(/\[\[([^\]]+)\]\]/g, (_, id) => persona(id))}</li>`).join("");
+  $("#findings").addEventListener("click", (ev) => {
+    const b = ev.target.closest("[data-hsel]");
+    if (!b) return;
+    if (state.tema) setTema(null);
+    state.hiddenZones.clear();
+    document.getElementById("red").scrollIntoView({ behavior: "smooth", block: "start" });
+    handlers.select(b.dataset.hsel, true);
+  });
 
   render(0);
+  document.getElementById("cargando").remove();
 })().catch((err) => {
   console.error(err);
+  const msg = `No se pudieron cargar los datos (${err.message}). Ejecuta el pipeline y abre la app con <code>flask run</code>.`;
+  const c = document.getElementById("cargando");
+  if (c) { c.innerHTML = msg; c.classList.add("error"); }
   const s = document.getElementById("side");
-  if (s) s.innerHTML = `<p class="hint">No se pudieron cargar los datos (${err.message}). Ejecuta el pipeline y abre la app con <code>flask run</code>.</p>`;
+  if (s) s.innerHTML = `<p class="hint">${msg}</p>`;
 });

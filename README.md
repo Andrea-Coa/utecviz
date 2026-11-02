@@ -19,6 +19,22 @@ flask run                         # http://127.0.0.1:5000  (en macOS, si el 5000
 
 Los datos ya calculados están en `static/data/`. D3 y la tipografía se sirven en local (`static/vendor/`, `static/fonts/`).
 
+**Qué hace Flask** (`app.py`):
+
+- **Valida los datos al arrancar.** Comprueba que los ids de nodo sean únicos, que cada arista una dos nodos existentes (sin lazos ni repetidas) y que haya métricas para cada nodo en cada año. Si algo falla, no arranca y dice qué está mal.
+- **Entrega la red en una sola respuesta comprimida** (`/api/red`): son 1,15 MB de JSON que viajan como 105 KB con gzip. Lleva ETag, así que una recarga sin cambios recibe un 304. Mientras carga, la red muestra «Cargando la red…»; si falla, un mensaje con la causa.
+
+| Ruta | Qué devuelve |
+|---|---|
+| `/` | La página (D3) |
+| `/api/red` | Nodos, aristas, métricas por año, pares potenciales, departamentos y resumen (lo que usa la página) |
+| `/api/nodes?year=2020` | Nodos con sus métricas de ese año |
+| `/api/edges?year=2020` | Aristas vigentes ese año, con el peso acumulado hasta ese año |
+| `/api/salud` | Conteos de nodos y aristas, rango de años y estado del modelo de T5 |
+| `/api/tema?q=…` | T5 (equipo para un tema) |
+
+Los errores de `/api/*` también son JSON (p. ej. `?year=1990` → 400 con el motivo). Para arrancar sin cargar el modelo de T5, usa `UTECVIS_SIN_T5=1 flask run`: el arranque es inmediato y T5 usa el resultado precalculado.
+
 **T5 necesita internet la primera vez**: al arrancar, la app descarga el modelo `intfloat/multilingual-e5-base` (~1 GB, queda en la caché de Hugging Face) y lo carga en segundo plano (1–2 min; luego cada búsqueda tarda ~50 ms). Mientras tanto el panel dice «Buscando…». Sin `sentence-transformers`/`torch` instalados, T1–T4 funcionan igual y T5 muestra un aviso.
 
 ### Publicar en GitHub Pages (con T5 en Hugging Face Spaces)
@@ -32,7 +48,7 @@ python deploy/preparar_space.py                 # dist/space/: carpeta para subi
 python deploy/build_pages.py --api https://<usuario>-<space>.hf.space/api/tema   # docs/
 ```
 
-Pages se activa en *Settings → Pages → Deploy from a branch → `main` / `/docs`*. Si el Space está dormido (sin uso por ~48 h) o no responde en 5 s, la página muestra el **resultado precalculado** más cercano: hay 26 habilidades, 325 pares de habilidades y 24 temas de ejemplo, y en el texto libre se detectan las habilidades por palabras clave. Ese resultado se marca como «aproximado» y se reemplaza solo cuando responde el Space. Además, al abrir la página se le envía un pedido para que despierte.
+Pages se activa en *Settings → Pages → Deploy from a branch → `main` / `/docs`*. Si el Space está dormido (sin uso por ~48 h) o no responde en 5 s, la página muestra el **resultado precalculado** más cercano: hay 28 habilidades, 378 pares de habilidades y 24 temas de ejemplo, y en el texto libre se detectan las habilidades por palabras clave. Ese resultado se marca como «aproximado» y se reemplaza solo cuando responde el Space. Además, al abrir la página se le envía un pedido para que despierte.
 
 ### Pipeline (opcional: regenera `static/data/`)
 
@@ -49,6 +65,7 @@ pip install -r requirements-pipeline.txt      # pandas, networkx, scikit-learn, 
 | `pipeline/04_metricas.py` | Por año (2012–2026): grado, grado ponderado, betweenness, comunidades Louvain estables, Q, NMI, ARI, pureza |
 | `pipeline/05_exportar.py` | `nodes/edges/similarity/metrics_by_year/departamentos/resumen.json`, CSV de entrega y miniaturas de fotos |
 | `pipeline/tests/test_metricas.py` | Recalcula con networkx, desde `edges.json`, el grado, el betweenness y la modularidad de 2026 y los compara con lo exportado |
+| `pipeline/tests/test_app.py` | Arranca la app Flask y comprueba la página, que nodos y aristas sean coherentes, la compresión y el 304, el filtro por año y los errores JSON |
 
 Los embeddings se cachean en `data/processed/emb_pubs.npy` (por URL) y `emb_perfiles.npy`; una segunda corrida no los recalcula. Los parámetros están en `pipeline/config.py`.
 
@@ -56,7 +73,7 @@ Los embeddings se cachean en `data/processed/emb_pubs.npy` (por URL) y `emb_perf
 
 ```
 utecviz/
-  app.py  tema.py (T5)  templates/index.html  requirements.txt  requirements-pipeline.txt  run_pipeline.sh
+  app.py (Flask: valida y sirve la red, API)  tema.py (T5)  templates/index.html  requirements.txt  requirements-pipeline.txt  run_pipeline.sh
   static/css/style.css  static/js/{main,network,panel}.js  static/vendor/d3.v7.9.0.min.js  static/fonts/
   static/data/   nodes.json edges.json similarity.json metrics_by_year.json departamentos.json resumen.json (+ nodes.csv, edges.csv)
   static/img/fotos/{id}.webp|.jpg     miniaturas 96×96
@@ -77,22 +94,23 @@ Los datos crudos se dejaron en `utec_perfiles/` (su ubicación original) en luga
 |---|---|---|---|
 | T1 | ¿Quiénes colaboran más dentro de UTEC? | Grado ponderado (publicaciones compartidas con otros docentes UTEC) | Tamaño del nodo (escala √, dominio fijo al máximo de 2026) + ranking «Prolíficos» |
 | T1b | ¿Quiénes tienen más impacto? | Índice h (Scopus, del perfil) | Botón «Tamaño: Calidad (h)»: el radio pasa a escala √ del índice h (sin dato = mínimo); «Contribución» (por defecto) vuelve al grado ponderado |
-| T2 | ¿Quiénes son puentes entre departamentos? | Betweenness (no ponderado, normalizado) + fracción de coautoría fuera del departamento | Anillo oscuro (grosor ∝ betweenness, desde el 12 % del máximo del año) + posición entre zonas + aristas entre departamentos en tinta oscura + ranking «Puentes» |
+| T2 | ¿Quiénes son puentes entre departamentos? | Betweenness (no ponderado, normalizado) + fracción de coautoría fuera del departamento + **análisis de corte** (qué se rompe sin la persona) | Anillo oscuro (grosor ∝ betweenness, desde el 12 % del máximo del año) + posición entre zonas + aristas entre departamentos en tinta oscura + ranking «Puentes», donde cada fila dice cuántos departamentos une, si es punto de corte (✂) y qué pares de departamentos dependen solo de esa persona |
 | T3 | ¿Las comunidades coinciden con los departamentos? | Louvain, modularidad Q, NMI y ARI comunidad↔departamento, pureza | Botón «Agrupar por: Comunidad»: los nodos se reordenan con transición; manchas C1…Cn; el color sigue siendo el departamento |
 | T4 | ¿Qué colaboraciones nuevas son probables? | Similitud coseno de embeddings en pares sin coautoría (opcional: 0,7·sim + 0,3·Adamic-Adar) | Botón «Colaboraciones potenciales»: coautorías al 7 %, punteadas rojas, umbral y filtro «solo entre departamentos», top 10 en el panel |
-| T5 | Dado un tema, ¿quiénes podrían formar el equipo? | Similitud coseno entre el tema (e5, prefijo `query:`) y las publicaciones y perfiles de cada docente; camino más corto entre candidatos | Campo «Tema» (texto libre o una de 26 habilidades): el tema se descompone en facetas; una estrella con etiqueta por faceta junto a sus expertos y una estrella del tema entre ellas; líneas de puntos (grosor ∝ cercanía); solo se ven el equipo, sus coautorías y los puentes que los unen |
+| T5 | Dado un tema, ¿quiénes podrían formar el equipo? | Similitud coseno entre el tema (e5, prefijo `query:`) y las publicaciones y perfiles de cada docente; camino más corto entre candidatos | Campo «Tema» (texto libre o una de 28 habilidades): el tema se descompone en facetas; una estrella con etiqueta por faceta junto a sus expertos y una estrella del tema entre ellas; líneas de puntos (grosor ∝ cercanía); solo se ven el equipo, sus coautorías y los puentes que los unen |
 | ▶ | ¿Cómo evolucionó la red? | Todas las métricas, precalculadas por año 2012–2026 | Slider de año y botón ▶ (900 ms por año), año en marca de agua |
 
 ## Decisiones de diseño
 
 - **La red es la protagonista.** Ocupa toda la pantalla (salvo los controles). La marca, las cifras y el panel de detalle (ranking, ficha, equipo) van en una barra lateral que se puede plegar (‹). «Cómo leer la red» vive en la leyenda, dentro de la red y abajo a la izquierda: es lo primero que se lee sin tapar el grafo. Muestra solo las codificaciones activas (el anillo si está encendido, la línea roja con T4, la estrella con T5) y se puede plegar.
 - **Una sola red; los botones nunca cambian el grafo.** Solo mueven nodos (con la simulación de fuerzas) o cambian opacidades y capas. Así el lector no pierde el mapa mental entre tareas.
-- **Vista jerárquica** («Agrupar por: Jerárquico»): un complemento ordenado de la vista por departamento, no un reemplazo. Usa la jerarquía UTEC → departamento → persona en disposición radial con *hierarchical edge bundling* (Holten, 2006), con `d3.curveBundle` y `d3.arc`:
+- **Vista jerárquica** («Agrupar por: Jerárquico»): es la **vista inicial** (y la de las tarjetas T1 y T2). T4 y T5 pasan a la vista por departamento (fuerzas), porque sus líneas punteadas y estrellas se ubican entre los nodos. Usa la jerarquía UTEC → departamento → persona en disposición radial con *hierarchical edge bundling* (Holten, 2006), con `d3.curveBundle` y `d3.arc`:
   - Cada departamento ocupa un sector, en el mismo orden que sus zonas.
   - En el anillo interior van quienes tienen coautores UTEC en el año elegido, ordenados por comunidad y grado ponderado; en el exterior, quienes no tienen.
   - Las coautorías pasan por el centro de su departamento y, si cruzan departamentos, por el centro del círculo, de modo que forman haces.
   - Con la animación, las personas pasan del anillo exterior al interior al conseguir su primer coautor.
   - Los nodos conservan su tamaño. Cuando un sector tiene muchos nodos grandes (Bioingeniería, Mecánica), estos se comprimen y pueden encimarse un poco.
+- **Color de las aristas**: una coautoría dentro de un departamento toma el color de ese departamento, y una entre departamentos va en tinta oscura (negra; clara en modo oscuro). En la vista jerárquica, los haces de color quedan dentro de cada sector y los oscuros cruzan por el centro: se ve de un vistazo cuánta colaboración sale de cada departamento. Los departamentos en gris («Otros») tienen aristas internas grises.
 - **Nodo = foto** (pide el enunciado) recortada en círculo, con un **borde de color = departamento**. Sin foto real (2 *placeholders* del portal), se muestran las iniciales sobre el color.
 - **Tamaño fijo por año** (no por botón): el dominio de la escala es el máximo de 2026, así que durante la animación los nodos crecen de verdad.
 - **Puentes por dos canales**: el anillo (métrica exacta) y la posición. La atracción al ancla del departamento es `0,26·(1 − 0,85·cross_frac)`, de modo que quien colabora fuera queda «suelto» y sus coautores lo llevan al espacio entre zonas.
@@ -112,6 +130,11 @@ Los datos crudos se dejaron en `utec_perfiles/` (su ubicación original) en luga
 - **Comunidades**: `louvain_communities(G, weight="w", seed=42)`. Solo cuentan las de 3 o más personas (el resto, −1). Las etiquetas se fijan por tamaño en 2026 (C1, C2…) y hacia atrás cada año se empareja con el siguiente por máxima similitud de Jaccard, de modo que los colores y etiquetas no saltan durante la animación.
 - **Globales**: Q (modularidad de la partición de Louvain), NMI y ARI comunidad↔departamento (solo nodos con comunidad), % de aristas entre departamentos.
 - **Pureza**: % del departamento dominante en cada comunidad.
+- **Análisis de corte** (complementa al betweenness): para cada persona conectada se quita de la red del año y se mide:
+  - si su grupo se parte (**punto de corte**, ✂) y cuántos colegas quedan fuera de la parte mayor;
+  - qué **pares de departamentos pierden su única conexión**. Si la persona es la única de su unidad (un centro o una facultad de una sola persona), los pares con esa unidad no cuentan, porque se perderían por definición.
+
+  Hace falta porque el betweenness normalizado sobre 104 personas (69 aisladas) da valores muy chicos (≤ 2,3 %) y no distingue entre estar en una cadena y unir departamentos. Lo calcula `main.js` para cada año (se ve en el ranking y en la ficha) y `05_exportar.py` para los hallazgos de 2026, con el mismo método.
 
 ## Hiperautoría
 
@@ -152,11 +175,16 @@ En el conjunto de pares, la similitud ordena bien a quienes después colaboran (
 
 - El tema se convierte en vector con el mismo modelo que T4 (prefijo `query:`, como pide e5) y se compara con los embeddings ya calculados de las publicaciones y los perfiles (`data/processed/emb_*.npy`). Código: `tema.py`, ruta `/api/tema?q=…`.
 - **Puntaje de un docente** = 0,75 · media ponderada (0,6 / 0,3 / 0,1) de sus 3 publicaciones más cercanas al tema + 0,25 · similitud con su perfil (mismos pesos que el vector de persona). Quien no tiene publicaciones recibe en el primer término la mediana del grupo; si no, un perfil escrito en español le ganaba por idioma a quien publica sobre el tema. Los pesos 0,6 / 0,3 / 0,1 reemplazaron al promedio plano: con el promedio, Cristian López del Álamo (un paper de EEG) quedaba bajo Aurea Soriano (series multivariadas, sin EEG) incluso en «Señales biomédicas»; con los pesos queda sobre ella y la habilidad Visualización no cambia.
+- **Señal léxica en los títulos.** Además del embedding, se premia la publicación cuyo título contiene **todos** los términos del tema (0,5), y más si aparecen juntos, como frase, en cualquier orden y sin contar palabras vacías como «de» (1). Una sola palabra de un tema de varias no cuenta, porque es ambigua: «mining» de «data mining» también aparece en «…for the Mining Industry». Una coincidencia completa suma 0,03 al coseno de esa publicación (`PESO_LEX`). Los términos en español se traducen con un glosario corto (`GLOSARIO`), porque el 97 % de los títulos está en inglés. Se agregó porque el embedding sola deja casi empatadas las frases cortas: con «sistema visual», Germain García-Zanabria (título «…a visual system for early dropout detection…») quedaba detrás de quien publica sobre analítica visual en general; ahora queda primero.
+- **Temas declarados en el perfil.** Si el tema coincide con uno de los temas de interés que la persona declara en su perfil, se suma hasta 0,03 a su puntaje (`PESO_TEMA`, con la misma regla de cobertura y frase). Sin esto, quien no tiene publicaciones nunca aparecía, ni escribiendo su tema tal cual. Por ejemplo, Eric Biagioli (0 publicaciones; temas: Ingeniería de software, Geometría computacional, Procesamiento de imágenes) recibe la mediana en la parte de publicaciones y su perfil mezcla tres temas en un solo vector. Ahora es el 2.º en «ingeniería de software», el 3.º en «geometría computacional» y entra a la lista en «procesamiento de imágenes», detrás de quienes publican sobre eso.
+- **Siglas.** `SIGLAS` en `tema.py` (unas 80, de computación, salud y bio, civil y ambiental, materiales y gestión: CNN, GNN, ViT, DNA/ADN, PCR, BIM, LiDAR, LCA, PBI…). Para el modelo, la sigla se escribe como «expansión (SIGLA)»; en los títulos vale la sigla como palabra exacta (no como prefijo: «vit» no calza con «vitro») o la expansión completa. Así «vit» trae a quien publica sobre *Vision Transformers*. Antes, el filtro de vocabulario descartaba siglas como «gnn» o «BIM» porque no aparecían tal cual en ningún título.
+- **Temas sin sentido o ajenos al portal.** El % del panel es relativo al más cercano, así que alguien siempre salía al 100 %, incluso con «akjdfnalidbfahdliua». Ni el coseno ni el z sirven para detectarlo: el modelo da cosenos altos a cualquier texto (0,82 para esa basura, más que para «ingeniería de software»). Por eso se revisa el vocabulario: si más de la mitad de las palabras del tema (sin contar palabras vacías ni números) no aparece en ningún título, perfil, tema de interés, habilidad o glosario, no se arma equipo y el panel dice «Ningún docente del portal publica sobre…». Así quedan fuera la basura y también lo que nadie investiga en UTEC («fútbol», «derecho penal»). Un error de tipeo en una de dos palabras («deep learnign») sí pasa. `pipeline/tests/test_tema.py` lo prueba sin cargar el modelo.
+- **Habilidades escritas a mano.** Si el tema es el nombre de una habilidad o un alias (sin importar tildes; p. ej. «computacion grafica» o «computer graphics»), se busca por su descripción, como al elegirla de la lista. Antes, el modelo leía «computación» + «gráfica» por separado y traía cómputo con GPUs y gráficos de revistas. En las habilidades, la señal léxica es que el título mencione sus términos (`TERMINOS`) y pesa menos (0,01): desempata sin cambiar los primeros puestos de las 26 habilidades originales.
 - **Candidatos**: los que superan en 1,5 desviaciones a la media de los 104 (mínimo 3, máximo 8). El % del panel es la cercanía relativa al más cercano.
 - **La parte de red**: entre cada par de candidatos se busca el camino más corto (máximo 4 saltos) en la red del año. Se cuentan los pares que ya publicaron juntos, se marcan los **puentes** (quien está en el camino sin ser candidato) y los candidatos **sin camino** hasta otro. Es la respuesta de red: ¿el equipo ya existe o hay que presentarlo?
 - Ejemplo: «visualization of brain signals» devuelve a Christian Flores Vega (EEG), Tarrillo y Huamanchahua (Electrónica), y a Soriano, García-Zanabria, Mora y López del Álamo (visualización, Computación). El grupo de Electrónica se une a Wangdo Kim por medio de Eunice Villicaña, pero no existe ningún camino hasta el de Computación: es una colaboración por crear.
-- **Facetas (temas compuestos).** Con un solo vector, una frase como «visualization of brain signals» queda en un punto medio y quien es fuerte en una sola parte se diluye. Por eso el tema se descompone en **habilidades de un catálogo de 26** (`HABILIDADES` en `tema.py`): las que destacan (z ≥ 2 entre las 26) frente a la frase completa o frente a cada trozo separado por conectores («with», «for», «con», «para»…). Un trozo solo cuenta si alguna habilidad lo domina claramente (z ≥ 2,8); así «fibras naturales», ambiguo, no agrega Hidrología ni Biomecánica. Máximo 4 facetas. Los 2–3 expertos de cada faceta (z ≥ 2 entre los 104) se suman a la lista.
-  - Revisión del catálogo contra los datos: cada habilidad devuelve expertos reconocibles (Visualización: Soriano, García-Zanabria; Elementos finitos: Mantari, Benedetty; Hidrología: Rau, Gutiérrez…), salvo «Grafos y redes», porque casi nadie publica sobre eso en el portal.
+- **Facetas (temas compuestos).** Con un solo vector, una frase como «visualization of brain signals» queda en un punto medio y quien es fuerte en una sola parte se diluye. Por eso el tema se descompone en **habilidades de un catálogo de 28** (`HABILIDADES` en `tema.py`): las que destacan (z ≥ 2 entre las 28) frente a la frase completa o frente a cada trozo separado por conectores («with», «for», «con», «para»…). Un trozo solo cuenta si alguna habilidad lo domina claramente (z ≥ 2,8); así «fibras naturales», ambiguo, no agrega Hidrología ni Biomecánica. Máximo 4 facetas. Los 2–3 expertos de cada faceta (z ≥ 2 entre los 104) se suman a la lista.
+  - Revisión del catálogo contra los datos: cada habilidad devuelve expertos reconocibles (Visualización: Soriano, García-Zanabria; Elementos finitos: Mantari, Benedetty; Hidrología: Rau, Gutiérrez; Computación gráfica: Romero, López del Álamo…), salvo «Grafos y redes», porque casi nadie publica sobre eso en el portal.
   - Ejemplos: «visualization of brain signals» → Señales biomédicas + Visualización, **sin camino corto en la red** entre ambos grupos; «climate change impacts on hydropower energy» → Clima + Energía + Hidrología; «materiales compuestos con fibras naturales» → solo Ensayos de materiales.
   - **En la red**, cada faceta es una estrella pequeña con su nombre, ubicada junto a sus expertos y empujada hacia afuera del lienzo. Las facetas no se distinguen por color, porque el color ya codifica el departamento y la paleta apta para daltonismo está agotada. Se identifican por etiqueta directa y posición, y la distancia entre estrellas muestra cuán separados están hoy esos grupos.
   - **Lista única**, ordenada por cercanía al tema completo (los candidatos del tema más los expertos de cada faceta). Cada persona lleva la etiqueta ★ de las facetas en que destaca: z ≥ 2 en esa habilidad, o z ≥ 1,5 y **al menos un título** que mencione sus términos (`TERMINOS` en `tema.py`; el número en la etiqueta). El embedding sola no basta: en «Señales biomédicas», Cristian López del Álamo (títulos con EEG y EMG) y Aurea Soriano (series multivariadas, sin EEG en ningún título) quedan casi empatados (z 1,80 frente a 1,75). Se usa el título y no el resumen porque en los resúmenes los términos aparecen de pasada.
@@ -168,8 +196,13 @@ En el conjunto de pares, la similitud ordena bien a quienes después colaboran (
 ## Resultados principales (2026)
 
 - **Red muy dispersa**: 35 aristas; solo 35 de 104 docentes tienen algún coautor UTEC del portal y 69 aparecen aislados. La primera coautoría interna es de 2013, y las comunidades aparecen desde 2018.
-- **Más prolíficos (T1)**: Carmen Flores Barreda (10 publicaciones compartidas), Samuel Charca (10), José Luis Mantari (9) y Ruth Canahuire (9).
-- **Puentes (T2)**: José Luis Mantari, Wangdo Kim y Eunice Villicaña tienen el mayor betweenness. El 49 % de los pares de coautores cruzan departamentos.
+- **Más prolíficos (T1)**: Carmen Flores Barreda (10 publicaciones compartidas, con 4 colegas), Samuel Charca (10, con 2), José Luis Mantari (9, con 5) y Ruth Canahuire (9, con 5). Entre los cuatro participan en el 38 % del peso de la coautoría interna. Hay dos perfiles: quien repite con pocos colegas (Charca, 5 publicaciones por coautor) y quien abre colaboraciones con muchos (Canahuire, 5 coautores, todos de otros departamentos).
+- **Puente principal (T2)**: José Luis Mantari (Ciencias) tiene el mayor betweenness (2,3 %), y sus 5 coautores son de otros departamentos. Sin esa persona, el grupo principal de 23 personas se parte en 3 (el mayor de 14) y 4 pares de departamentos pierden su única conexión.
+- **Betweenness alto no equivale a puente entre departamentos (T2)**:
+  - Wangdo Kim es el n.º 2 en betweenness, pero solo 1 de sus 3 coautores es de otro departamento: su posición viene de estar en la cadena que une a 7 colegas con el resto.
+  - Ruth Canahuire colabora con 4 departamentos además del suyo, pero es la n.º 8: sus colegas se conectan por otras vías y sin esa persona ningún par de departamentos se desconecta.
+  - Mónica Santa María tiene un betweenness casi nulo (su grupo es de 4 personas), pero 4 pares de departamentos dependen solo de esa persona.
+- **Red frágil**: 13 de los 35 docentes conectados son puntos de corte. El 49 % de los pares de coautores cruzan departamentos, pero esa colaboración se apoya en pocas personas.
 - **Comunidades (T3)**: 5 comunidades de 3 o más personas, con Q = 0,72 (grupos muy marcados) pero NMI = 0,56 y ARI = 0,30 respecto a los departamentos: coinciden solo en parte. C2 es casi toda de Electrónica y Mecatrónica (86 % de pureza); C1 y C3 mezclan 3 y 4 unidades.
 - **Potenciales (T4)**: el par más parecido entre departamentos sin coautoría es Carlos Benedetty (Civil y Ambiental) – Samuel Charca (Mecánica y Energía), con similitud 0,61. Le siguen Ruth Canahuire – Elvis Jara y Walter Barrutia – Emir Vela.
 
@@ -178,7 +211,11 @@ En el conjunto de pares, la similitud ordena bien a quienes después colaboran (
 - 2976 de 2976 relaciones persona–publicación cruzan por nombre exacto del perfil; hay 104 nodos (los aislados se mantienen).
 - `entrega/reporte_calidad.md` lista las 9 personas sin `Departamento de …` en sus cargos y la unidad que se les asignó. Las correcciones manuales van en `data/manual/departamentos_override.csv` (`id,departamento,motivo`).
 - 2 fotos son el *placeholder* del portal (se detectan por hash): se muestran iniciales.
-- `pytest pipeline/tests` recalcula para 2026 el grado, el grado ponderado, el betweenness, la modularidad, la partición de Louvain (misma semilla), el tamaño de las comunidades y `cross` desde los archivos exportados: **5/5 pasan**.
+- `pytest pipeline/tests`:
+  - recalcula para 2026, desde los archivos exportados, el grado, el grado ponderado, el betweenness, la modularidad, la partición de Louvain (misma semilla), el tamaño de las comunidades y `cross`;
+  - prueba la app Flask (página, coherencia de nodos y aristas, gzip y 304, filtro por año, errores JSON).
+
+  **36/36 pasan** (incluye `test_tema.py`: temas sin sentido, siglas, alias y coincidencia de títulos).
 
 ## Limitaciones
 

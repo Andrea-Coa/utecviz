@@ -38,11 +38,19 @@
   },
   {
    "titulo":"Quiénes colaboran más",
-   "texto":"Carmen Elena Flores Barreda encabeza el ranking con 10 publicaciones compartidas con 4 colegas UTEC, seguido de Samuel Charca Mamani, Ruth Canahuire Cabello y José Luis Mantari Laureano."
+   "texto":"[[carmen-elena-flores-barreda]] 10 con 4 colegas, 2 de otro departamento; [[samuel-charca-mamani]] 10 con 2 colegas, 2 de otro departamento; [[ruth-canahuire-cabello]] 9 con 5 colegas, 5 de otro departamento; [[josé-luis-mantari-laureano]] 9 con 5 colegas, 5 de otro departamento (publicaciones compartidas · coautores UTEC). Estas 4 personas participan en 38 % del peso de la coautoría interna (68 publicaciones compartidas, contadas por par). Hay dos perfiles: quien repite con pocos colegas ([[samuel-charca-mamani]], 5,0 publicaciones por coautor) y quien abre colaboraciones con muchos ([[ruth-canahuire-cabello]])."
   },
   {
-   "titulo":"Los puentes entre departamentos",
-   "texto":"José Luis Mantari Laureano, Wangdo Kim y Eunice Villicaña Ortiz son los principales puentes: tienen la mayor intermediación (betweenness), es decir, por ellos pasan más caminos cortos entre colegas que por nadie más. 49 % de los pares de coautores cruzan departamentos."
+   "titulo":"El puente principal",
+   "texto":"[[josé-luis-mantari-laureano]] (Ciencias) tiene el mayor betweenness (2,3 %) y sus 5 coautores son de otros departamentos (Bioingeniería e Ingeniería Química, Centro de Investigación en Bioingeniería - BIO y Ingeniería Mecánica y de la Energía). Si no estuviera, el grupo principal de 23 personas se partiría en 3 (el mayor de 14) y 4 pares de departamentos perderían su única conexión. La red es frágil: 13 de los 35 docentes conectados son puntos de corte."
+  },
+  {
+   "titulo":"Betweenness alto no es lo mismo que puente entre departamentos",
+   "texto":"[[wando-kim]] es el n.º 2 en betweenness, pero solo 1 de sus 3 coautores es de otro departamento: su intermediación viene de estar en una cadena (sin esta persona, 7 colegas quedan separados del resto), no de reunir departamentos. Al revés, [[ruth-canahuire-cabello]] colabora con 4 departamentos distintos al suyo, pero es el n.º 8 en betweenness: sus colegas también se conectan entre sí y, sin esta persona, 1 colega quedaría fuera y ningún par de departamentos perdería su conexión. Y [[monica-cecilia-santa-maría-fuster]] tiene betweenness casi nulo (su grupo es de 4 personas), pero sin esa persona 4 pares de departamentos quedarían desconectados. Por eso el panel muestra, junto al betweenness, qué se rompe sin cada persona."
+  },
+  {
+   "titulo":"La mitad de la colaboración cruza departamentos",
+   "texto":"49 % de los pares de coautores son de departamentos distintos, pero se apoyan en pocas personas: el grupo principal (23 docentes de 6 unidades) se sostiene por 12 puntos de corte."
   },
   {
    "titulo":"Las comunidades no calcan los departamentos",

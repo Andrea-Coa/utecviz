@@ -1,8 +1,8 @@
 """Respaldo de T5 sin servidor: precalcula resultados para usarlos en GitHub Pages cuando el Space no responde.
 
 Genera static/data/tema_precalc.json con:
-  - las 26 habilidades del catálogo, solas;
-  - las 325 combinaciones de 2 habilidades (temas compuestos);
+  - las 28 habilidades del catálogo, solas;
+  - las 378 combinaciones de 2 habilidades (temas compuestos);
   - temas de ejemplo (EJEMPLOS), con la búsqueda exacta de texto libre;
   - por habilidad, una expresión regular (términos en inglés de tema.TERMINOS + alias en español) para que la
     página detecte las habilidades de un texto libre y muestre la combinación más parecida.
@@ -44,6 +44,8 @@ ALIAS_ES = {
     "Grafos y redes": r"grafo|redes complejas",
     "Procesamiento de lenguaje": r"lenguaje natural|mineria de texto",
     "Visión por computadora": r"vision por computadora|vision artificial|imagen",
+    "Computación gráfica": r"computacion grafica|graficos? por computadora|graficas? por computadora|render|malla|nube de puntos|\b3d\b",
+    "Interacción humano-computadora": r"interaccion humano|interfaz|interfaces de usuario|usabilidad|seguimiento ocular|mirada",
     "Señales biomédicas": r"senal|cerebr|electroencefal|electromiograf",
     "Estadística": r"estadistic|regresion",
     "Series de tiempo": r"series? de tiempo|serie temporal|pronostic",

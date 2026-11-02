@@ -58,6 +58,21 @@
     return box("Publicaciones en conjunto", body, `<button class="mini-btn" type="button" data-close>Cerrar ✕</button>`);
   }
 
+  // Qué se rompe en la red del año si la persona no estuviera (ctx.corte, calculado en main.js)
+  function sinPersona(ctx, n) {
+    const c = ctx.corte.get(n.id);
+    if (!c) return "";
+    const deps = c.deps.length ? `Colabora con ${c.deps.length} departamento${c.deps.length > 1 ? "s" : ""} además del suyo.` : "Todos sus coautores son de su departamento.";
+    const rompe = c.trozos.length > 1
+      ? `su grupo de ${c.comp} personas se partiría en ${c.trozos.length} (${c.trozos.join(" + ")}) y ${c.fuera} colega${c.fuera > 1 ? "s" : ""} quedaría${c.fuera > 1 ? "n" : ""} fuera de la parte mayor`
+      : `su grupo de ${c.comp} personas seguiría unido (sus coautores se conectan por otros caminos)`;
+    const pares = c.pares.length
+      ? ` ${c.pares.length} par${c.pares.length > 1 ? "es" : ""} de departamentos perdería${c.pares.length > 1 ? "n" : ""} su única conexión: ${c.pares.map(([a, b]) => `${esc(ctx.zoneOf.get(a) || a)} ↔ ${esc(ctx.zoneOf.get(b) || b)}`).join("; ")}.`
+      : "";
+    return `<div class="corte${c.trozos.length > 1 ? " es-corte" : ""}"><b>${c.trozos.length > 1 ? "✂ Punto de corte" : "Sin esta persona"}</b> · ${deps}
+      Si no estuviera en ${ctx.year}, ${rompe}.${pares}</div>`;
+  }
+
   // ---------- 1. Ficha ----------
   function ficha(ctx) {
     const n = ctx.byId.get(ctx.state.selected), m = n.m, Y = ctx.year;
@@ -108,6 +123,7 @@
         <div><b>${n.indice_h ?? "—"}</b><span>índice h (Scopus)</span></div>
       </div>
       <p class="hint">${n.pubs_total} publicaciones en el portal${n.primer_anio ? ", desde " + n.primer_anio : ""}${ctx.topB.includes(n.id) ? " · <b>top 5 puente en " + Y + "</b>" : ""}.</p>
+      ${sinPersona(ctx, n)}
       <h4>Temas principales</h4>${temas}
       <h4>Coautores UTEC hasta ${Y}</h4>${coHtml}${co.length ? '<p class="hint">↔ = de otro departamento. Clic en un nombre para ver los títulos.</p>' : ""}${hyperHtml}
       <h4>Más similares sin coautoría</h4>${sugHtml}
@@ -140,7 +156,9 @@
     const t = ctx.state.tema, tm = ctx.tema;
     const quitar = `<button class="mini-btn" type="button" data-cleartema>Quitar ✕</button>`;
     if (t.cargando) return box("Equipo para un tema", `<p class="hint">Buscando docentes cercanos a «${esc(t.q)}»… La primera búsqueda puede tardar mientras se carga el modelo.</p>`, quitar);
-    if (t.error) return box("Equipo para un tema", /^https?:/.test(UV.api || "")
+    if (t.sinCoincidencias) return box("Equipo para un tema", `<p class="tema-sum">Ningún docente del portal publica sobre «${esc(t.q)}».</p>
+      <p class="hint">${t.sinCoincidencias.length ? `No aparece${t.sinCoincidencias.length > 1 ? "n" : ""} en ningún título ni perfil: ${t.sinCoincidencias.map((w) => `«${esc(w)}»`).join(", ")}. ` : ""}Revisa la ortografía, prueba en inglés (el 97 % de las publicaciones lo está) o elige una habilidad de la lista.</p>`, quitar);
+        if (t.error) return box("Equipo para un tema", /^https?:/.test(UV.api || "")
       ? `<p class="hint">El servidor de búsqueda no respondió y «${esc(t.q)}» no está entre los temas precalculados. Prueba con una habilidad de la lista (o una frase que la mencione), o vuelve a intentar en un minuto: el servidor puede estar despertando.</p>`
       : `<p class="hint">No se pudo buscar el tema: ${esc(t.error)}.<br>
       Instala las dependencias con <code>pip install -r requirements.txt</code> y reinicia <code>flask run</code>.</p>`, quitar);
@@ -163,7 +181,7 @@
     const aviso = t.aprox ? `<p class="hint aviso">Resultado <b>aproximado</b>, precalculado para «${esc(t.aprox)}». ${t.esperando
       ? "El servidor de búsqueda está despertando; se reemplaza solo cuando responda."
       : "El servidor de búsqueda no respondió: la búsqueda exacta está en la versión local."}</p>` : "";
-    const nota = `<p class="hint">% = relativo al más cercano. Puntaje: sus 3 publicaciones más parecidas, pesando más la mejor (0,6 / 0,3 / 0,1; 75 %) y su perfil (25 %), con el modelo de embeddings de T4. Mejor en inglés: el 97 % de las publicaciones lo está.</p>`;
+    const nota = `<p class="hint">% = cercanía relativa dentro de esta lista: 100 % es el más cercano al tema, no una certeza (si el tema no aparece en el portal, no se arma lista). Puntaje: sus 3 publicaciones más parecidas, pesando más la mejor (0,6 / 0,3 / 0,1; 75 %) y su perfil (25 %), con el modelo de embeddings de T4. Mejor en inglés: el 97 % de las publicaciones lo está.</p>`;
     if (!tm.facetas.length) {
       const body = `${aviso}<p class="tema-sum"><b>${tm.cand.length}</b> docentes de <b>${deps}</b> departamento${deps > 1 ? "s" : ""} con producción cercana a «${esc(tm.q)}». En ${ctx.year}: ${red}.</p>
         ${lista(tm.cand)}${nota}`;
@@ -213,28 +231,39 @@
     const items = ctx.nodes.filter((n) => val(n) > 0)
       .sort((x, y) => val(y) - val(x) || y.m.degree - x.m.degree || x.nombre.localeCompare(y.nombre)).slice(0, 8);
     const mx = d3.max(items, val) || 1;
+    // segunda línea de cada fila: la justificación del ranking (no solo el número)
+    const detalle = (n) => {
+      const m = n.m, c = ctx.corte.get(n.id);
+      if (!b) return `${m.degree} coautor${m.degree > 1 ? "es" : ""}${m.cross_degree ? ` · ${m.cross_degree} de otro dpto.` : " · mismo dpto."} · ${UV.dec(m.wdeg / m.degree, 1)} pub./coautor`;
+      const x = [c.deps.length ? `${c.deps.length} dpto${c.deps.length === 1 ? "" : "s"}. más` : "solo su dpto."];
+      if (c.trozos.length > 1) x.push(`✂ sin esta persona, ${c.fuera} ${c.fuera === 1 ? "queda" : "quedan"} fuera`);
+      if (c.pares.length) x.push(`${c.pares.length} par${c.pares.length > 1 ? "es" : ""} de dptos. sin otra vía`);
+      return x.join(" · ");
+    };
     const lis = items.map((n, i) => `<li tabindex="0" data-id="${esc(n.id)}" class="${st.selected === n.id ? "sel" : ""}">
-        <span class="n">${i + 1}</span>${dot(n)}<span>${esc(n.nombre)}<div class="bar"><i style="width:${(val(n) / mx) * 100}%"></i></div></span>
+        <span class="n">${i + 1}</span>${dot(n)}<span>${esc(n.nombre)}<div class="bar"><i style="width:${(val(n) / mx) * 100}%"></i></div>
+        <span class="hint rank-why">${detalle(n)}</span></span>
         <span class="n">${b ? pct(val(n)) : val(n)}</span></li>`).join("");
+    const nCorte = [...ctx.corte.values()].filter((c) => c.trozos.length > 1).length;
     const g = ctx.glob;
     const seg = `<span class="seg" role="group" aria-label="Tipo de ranking">
       <button type="button" data-rank="w" aria-pressed="${!b}">Prolíficos</button><button type="button" data-rank="b" aria-pressed="${b}">Puentes</button></span>`;
-    const body = `${seg}<p class="hint">${b ? "Betweenness: % de caminos más cortos que pasan por la persona." : "Publicaciones compartidas con otros docentes UTEC (grado ponderado)."}</p>
+    const body = `${seg}<p class="hint">${b ? "Betweenness: % de caminos más cortos que pasan por la persona. Debajo, lo que se rompe sin la persona: ✂ = punto de corte (su grupo se parte)." : "Publicaciones compartidas con otros docentes UTEC (grado ponderado). Debajo: con cuántos colegas y cuánto repite con cada uno."}</p>
       ${lis ? `<ol class="rank">${lis}</ol>` : `<p class="hint">Aún no hay coautorías internas en ${ctx.year}.</p>`}
-      <p class="hint">${g.n_aristas} pares de coautores; ${Math.round(g.pct_cross * 100)} % cruzan departamentos. ${g.n_conectados} de ${ctx.nodes.length} docentes tienen algún coautor UTEC.</p>`;
+      <p class="hint">${g.n_aristas} pares de coautores; ${Math.round(g.pct_cross * 100)} % cruzan departamentos. ${g.n_conectados} de ${ctx.nodes.length} docentes tienen algún coautor UTEC${g.n_conectados ? `; ${nCorte} son puntos de corte` : ""}.</p>`;
     return box(`Ranking ${ctx.year}`, body);
   }
 
   // ---------- 5. Cómo leer la red (va en la leyenda, dentro de la red; ver main.js renderLegend) ----------
   UV.leerHtml = function (ctx) {
     const st = ctx.state, sw = (inner) => `<svg width="34" height="18" viewBox="0 0 38 20" aria-hidden="true">${inner}</svg>`;
-    const ink = css("--edge-cross"), lig = css("--edge-in"), ring = css("--ring"), pot = css("--potential"), c1 = css("--c1"), tema = css("--tema");
+    const ink = css("--edge-cross"), lig = css("--edge-in"), c3 = css("--c3"), ring = css("--ring"), pot = css("--potential"), c1 = css("--c1"), tema = css("--tema");
     let h = `<div class="enc">
       ${sw(`<circle cx="9" cy="10" r="4.5" fill="${c1}"/><circle cx="26" cy="10" r="8.5" fill="${c1}"/>`)}<span><b>Tamaño</b> = ${ctx.tema ? "cercanía al tema (% del panel)" : st.size === "h" ? "índice h (Scopus)" : "publicaciones compartidas en UTEC"}</span>
       ${sw(`<circle cx="19" cy="10" r="7.5" fill="none" stroke="${c1}" stroke-width="3"/>`)}<span><b>Borde</b> = departamento (abajo)</span>`;
     if (st.rings) h += `${sw(`<circle cx="19" cy="10" r="5.5" fill="${c1}"/><circle cx="19" cy="10" r="9" fill="none" stroke="${ring}" stroke-width="2.5"/>`)}<span><b>Anillo oscuro</b> = puente (betweenness)</span>`;
     h += `${sw(`<line x1="2" y1="10" x2="36" y2="10" stroke="${ink}" stroke-width="2.5"/>`)}<span><b>Línea oscura</b> = coautoría entre departamentos</span>
-      ${sw(`<line x1="2" y1="10" x2="36" y2="10" stroke="${lig}" stroke-width="2.5"/>`)}<span><b>Línea clara</b> = mismo departamento</span>`;
+      ${sw(`<line x1="2" y1="10" x2="18" y2="10" stroke="${c1}" stroke-width="2.5"/><line x1="20" y1="10" x2="36" y2="10" stroke="${c3}" stroke-width="2.5"/>`)}<span><b>Línea de color</b> = mismo departamento (su color)</span>`;
     if (st.group === "hier") h += `${sw(`<circle cx="19" cy="10" r="4" fill="none" stroke="${lig}" stroke-width="1.5"/><circle cx="19" cy="10" r="8.5" fill="none" stroke="${lig}" stroke-width="1.5" stroke-dasharray="2 2"/>`)}<span><b>Jerárquico</b>: anillo interior = con coautores UTEC, exterior = sin coautores; las líneas pasan por el centro de su departamento</span>`;
     if (st.potential) h += `${sw(`<line x1="2" y1="10" x2="36" y2="10" stroke="${pot}" stroke-width="2.4" stroke-dasharray="6 4"/>`)}<span><b>Punteada roja</b> = colaboración potencial</span>`;
     if (ctx.tema) h += `${sw(`<line x1="10" y1="10" x2="36" y2="10" stroke="${tema}" stroke-width="3.5" stroke-linecap="round" stroke-dasharray="1 5"/><path transform="translate(8,10)" d="${d3.symbol(d3.symbolStar, 110)()}" fill="${tema}"/>`)}<span><b>Estrella</b> = tema${ctx.tema.facetas.length ? " y sus facetas" : ""}; puntos más gruesos = más cercano</span>`;

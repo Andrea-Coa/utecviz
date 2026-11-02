@@ -162,6 +162,56 @@ v_sim = next(r for r in val["resultados"] if r["ranking"] == "similitud" and not
 v_cross = next(r for r in val["resultados"] if r["ranking"] == "similitud" and r["solo_entre_departamentos"])
 aislados = sum(1 for v in m26.values() if v["degree"] == 0)
 
+# --- Colaboradores y puentes: más allá del ranking ---
+# El betweenness normalizado sobre 104 personas (69 aisladas) da valores muy chicos (≤ 2,3 %) y no dice QUÉ se pierde
+# sin la persona. Se complementa con un análisis de corte en la red de ANIO_REF: si la persona no estuviera,
+# ¿su grupo se parte? (punto de articulación), ¿cuántos colegas quedan fuera del trozo mayor? y ¿qué pares de
+# departamentos pierden su única conexión? (el mismo cálculo hace main.js para cada año). Si la persona es la única
+# de su unidad (p. ej. un centro de una sola persona), los pares con esa unidad no cuentan: se perderían por definición.
+import networkx as nx  # noqa: E402
+
+dep_de = {n["id"]: n["departamento"] for n in nodes}
+G26 = nx.Graph()
+G26.add_nodes_from(dep_de)
+G26.add_edges_from((e["source"], e["target"], {"w": e["w"]}) for e in edges if e["first_year"] <= ANIO_REF)
+
+
+def pares_dep(H):
+    """Pares de departamentos con al menos un camino entre alguna de sus personas."""
+    s = set()
+    for c in nx.connected_components(H):
+        ds = sorted({dep_de[i] for i in c})
+        s |= {(a, b) for k, a in enumerate(ds) for b in ds[k + 1:]}
+    return s
+
+
+pares_base = pares_dep(G26)
+corte = {}
+for v in G26:
+    if G26.degree(v) == 0:
+        continue
+    comp = nx.node_connected_component(G26, v) - {v}
+    trozos = sorted((len(c) for c in nx.connected_components(G26.subgraph(comp))), reverse=True)
+    H = G26.copy()
+    H.remove_node(v)
+    corte[v] = {"comp": len(comp) + 1, "trozos": trozos, "fuera": len(comp) - trozos[0],
+                # si la persona es la única de su unidad, sus pares se perderían por definición: no cuentan
+                "pares": sorted(x for x in pares_base - pares_dep(H) if n_unidad[dep_de[v]] > 1 or dep_de[v] not in x),
+                "deps": sorted({dep_de[j] for j in G26[v]} - {dep_de[v]})}
+articulacion = [v for v in corte if len(corte[v]["trozos"]) > 1]
+comp_mayor = max(nx.connected_components(G26), key=len)
+peso_total = sum(d["w"] for *_, d in G26.edges(data=True))
+peso_top4 = sum(d["w"] for a, b, d in G26.edges(data=True) if a in {i for i, _ in top_w[:4]} or b in {i for i, _ in top_w[:4]})
+rank_b = {i: k + 1 for k, (i, _) in enumerate(sorted(m26.items(), key=lambda kv: -kv[1]["bc"]))}
+p1 = top_b[0][0]
+# el de mayor betweenness casi sin coautores de otros departamentos, y el conector más amplio sin betweenness alto
+broker = next((i for i, _ in top_b[1:5] if m26[i]["cross_degree"] <= m26[i]["degree"] / 3), None)
+conector = max((i for i in corte if i not in {x for x, _ in top_b[:3]}),
+               key=lambda i: (len(corte[i]["deps"]), m26[i]["cross_degree"], m26[i]["wdeg"]))
+# quien sostiene más pares de departamentos fuera del componente principal
+repite = max((i for i, _ in top_w[:4]), key=lambda i: m26[i]["wdeg"] / m26[i]["degree"])
+fuera_cp = max((i for i in corte if i not in comp_mayor), key=lambda i: (len(corte[i]["pares"]), m26[i]["degree"]), default=None)
+
 
 def dec(x, d=2):
     return f"{x:.{d}f}".replace(".", ",")
@@ -177,12 +227,39 @@ hallazgos = [
               f"docente UTEC del portal; hay {g26['n_aristas']} pares de coautores y {aislados} personas aisladas. "
               f"La primera coautoría entre docentes del portal es de {anio_1}."},
     {"titulo": "Quiénes colaboran más",
-     "texto": f"{nombre[top_w[0][0]]} encabeza el ranking con {top_w[0][1]['wdeg']} publicaciones compartidas con "
-              f"{top_w[0][1]['degree']} colegas UTEC, seguido de {lista([nombre[i] for i, _ in top_w[1:4]])}."},
-    {"titulo": "Los puentes entre departamentos",
-     "texto": f"{lista([nombre[i] for i, _ in top_b[:3]])} son los principales puentes: tienen la mayor intermediación "
-              f"(betweenness), es decir, por ellos pasan más caminos cortos entre colegas que por nadie más. {round(g26['pct_cross'] * 100)} % de los pares de coautores "
-              f"cruzan departamentos."},
+     "texto": "; ".join(f"[[{i}]] {v['wdeg']} con {v['degree']} colegas"
+                        + (f", {v['cross_degree']} de otro departamento" if v["cross_degree"] else ", todos de su departamento")
+                        for i, v in top_w[:4])
+              + f" (publicaciones compartidas · coautores UTEC). Estas 4 personas participan en {round(peso_top4 / peso_total * 100)} % "
+              f"del peso de la coautoría interna ({peso_total} publicaciones compartidas, contadas por par). Hay dos perfiles: quien repite con pocos colegas "
+              f"([[{repite}]], {dec(m26[repite]['wdeg'] / m26[repite]['degree'], 1)} publicaciones por coautor) y quien "
+              f"abre colaboraciones con muchos ([[{max((i for i, _ in top_w[:4]), key=lambda i: m26[i]['degree'])}]])."},
+    {"titulo": "El puente principal",
+     "texto": f"[[{p1}]] ({dep_de[p1]}) tiene el mayor betweenness ({dec(top_b[0][1]['bc'] * 100, 1)} %) y "
+              + (f"sus {m26[p1]['degree']} coautores son" if m26[p1]['cross_degree'] == m26[p1]['degree']
+                 else f"{m26[p1]['cross_degree']} de sus {m26[p1]['degree']} coautores son") + " de otros departamentos "
+              f"({lista(corte[p1]['deps'])}). Si no estuviera, el grupo principal de {corte[p1]['comp']} personas se "
+              f"partiría en {len(corte[p1]['trozos'])} (el mayor de {corte[p1]['trozos'][0]}) y "
+              f"{len(corte[p1]['pares'])} pares de departamentos perderían su única conexión. "
+              f"La red es frágil: {len(articulacion)} de los {g26['n_conectados']} docentes conectados son puntos de corte."},
+    {"titulo": "Betweenness alto no es lo mismo que puente entre departamentos",
+     "texto": (f"[[{broker}]] es el n.º {rank_b[broker]} en betweenness, pero solo {m26[broker]['cross_degree']} de "
+               f"sus {m26[broker]['degree']} coautores es de otro departamento: su intermediación viene de estar en una cadena "
+               f"(sin esta persona, {corte[broker]['fuera']} colegas quedan separados del resto), no de reunir departamentos. "
+               if broker else "")
+              + f"Al revés, [[{conector}]] colabora con {len(corte[conector]['deps'])} departamentos distintos al suyo, "
+              f"pero es el n.º {rank_b[conector]} en betweenness: sus colegas también se conectan entre sí y, sin esta persona, "
+              f"{corte[conector]['fuera']} colega{'s' if corte[conector]['fuera'] != 1 else ''} quedaría{'n' if corte[conector]['fuera'] != 1 else ''} "
+              f"fuera y " + (f"{len(corte[conector]['pares'])} pares de departamentos perderían su conexión."
+                             if corte[conector]["pares"] else "ningún par de departamentos perdería su conexión.")
+              + (f" Y [[{fuera_cp}]] tiene betweenness casi nulo (su grupo es de {corte[fuera_cp]['comp']} personas), pero "
+                 f"sin esa persona {len(corte[fuera_cp]['pares'])} pares de departamentos quedarían desconectados. Por eso el "
+                 f"panel muestra, junto al betweenness, qué se rompe sin cada persona." if fuera_cp and corte[fuera_cp]["pares"] else "")},
+    {"titulo": "La mitad de la colaboración cruza departamentos",
+     "texto": f"{round(g26['pct_cross'] * 100)} % de los pares de coautores son de departamentos distintos, pero se apoyan "
+              f"en pocas personas: el grupo principal ({len(comp_mayor)} docentes de "
+              f"{len({dep_de[i] for i in comp_mayor})} unidades) se sostiene por {sum(1 for v in articulacion if v in comp_mayor)} "
+              f"puntos de corte."},
     {"titulo": "Las comunidades no calcan los departamentos",
      "texto": f"Louvain encuentra {g26['n_comm']} comunidades de 3 o más personas (modularidad Q = {dec(g26['Q'])}). "
               f"Su parecido con los departamentos es parcial (NMI = {dec(g26['NMI'])})"
