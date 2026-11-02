@@ -167,7 +167,9 @@
       }));
       sim.force("x", d3.forceX((n) => anchor(n)[0]).strength(anchorStrength));
       sim.force("y", d3.forceY((n) => anchor(n)[1]).strength(anchorStrength));
-      sim.force("collide").radius((n) => (isHier() ? 0 : radius(n) + GAP));
+      // jerárquica: posiciones fijas, sin colisión, salvo los candidatos de T5, que crecen y pueden encimarse
+      // con sus vecinos de anillo si el sector va comprimido
+      sim.force("collide").radius((n) => (!isHier() ? radius(n) + GAP : ctx.tema && ctx.tema.rel.has(n.id) ? radius(n) + 2 : 0));
     }
 
     function warmStart() {
@@ -319,6 +321,9 @@
       ne.append("circle").attr("class", "border").attr("fill", "none");
       ne.append("text").attr("class", "ini");
       const all = nd.merge(ne);
+      // T5: el más cercano al tema se dibuja encima (ninguna foto tapa al top 1); sin tema, el orden original
+      const orden = new Map(ctx.nodes.map((n, i) => [n.id, i]));
+      all.sort((a, b) => (tm ? (tm.rel.get(a.id) ?? -1) - (tm.rel.get(b.id) ?? -1) : 0) || orden.get(a.id) - orden.get(b.id));
 
       const bcMax = ctx.bcMax, thr = 0.12 * bcMax;
       const ringW = d3.scaleLinear().domain([thr, Math.max(bcMax, thr + 1e-9)]).range([1.5, 6]).clamp(true);
@@ -421,6 +426,11 @@
       // relajación: las estrellas se separan entre sí (sus etiquetas no se enciman), ninguna queda sobre una
       // foto y todas quedan dentro del lienzo; las tres reglas a la vez, para que una no deshaga a la otra
       const st = tm.stars;
+      const cands = ctx.nodes.filter((n) => tm.rel.has(n.id));
+      gStar.selectAll("g.star").each(function (s) {
+        const t = this.querySelector("text");
+        s.w = (t && t.getComputedTextLength()) || s.label.length * 7;
+      });
       for (let it = 0; it < 80; it++) {
         for (let i = 0; i < st.length; i++) for (let j = i + 1; j < st.length; j++) {
           const a = st[i], b = st[j], dx = b.x - a.x || 1, dy = b.y - a.y, d = Math.hypot(dx, dy);
@@ -431,6 +441,15 @@
           const dx = s.x - n.x || 0.5, dy = s.y - n.y, d = Math.hypot(dx, dy), min = radius(n) + 22;
           if (d < min) { s.x += (dx / d) * (min - d); s.y += (dy / d) * (min - d); }
         }
+        // caja de la etiqueta (texto centrado sobre la estrella): se aleja de las fotos de los candidatos
+        for (const s of st) for (const n of cands) {
+          const b = starBox(s), px = Math.max(b[0], Math.min(b[2], n.x)), py = Math.max(b[1], Math.min(b[3], n.y));
+          let dx = px - n.x, dy = py - n.y, d = Math.hypot(dx, dy);
+          const min = radius(n) + 3;
+          if (d >= min) continue;
+          if (d < 1e-6) { dx = (b[0] + b[2]) / 2 - n.x || 0.5; dy = (b[1] + b[3]) / 2 - n.y; d = Math.hypot(dx, dy); }
+          s.x += (dx / d) * (min - d) * 0.5; s.y += (dy / d) * (min - d) * 0.5;
+        }
         st.forEach((s) => { s.x = Math.max(80, Math.min(W - 80, s.x)); s.y = Math.max(44, Math.min(H - 12, s.y)); });
       }
       gTema.selectAll("line").each(function (l) {
@@ -438,6 +457,11 @@
         this.setAttribute("x1", l.from.x); this.setAttribute("y1", l.from.y); this.setAttribute("x2", b.x); this.setAttribute("y2", b.y);
       });
       gStar.selectAll("g.star").attr("transform", (s) => `translate(${s.x},${s.y})`);
+    }
+    // caja [x0, y0, x1, y1] de la etiqueta de una estrella (ver el atributo y del texto en render)
+    function starBox(s) {
+      const y = s.y + (s.kind === "tema" ? -20 : -14), w = s.w || s.label.length * 7;
+      return [s.x - w / 2 - 3, y - 12, s.x + w / 2 + 3, y + 4];
     }
     const blob = d3.line().curve(d3.curveCatmullRomClosed.alpha(0.6));
     // aristas: rectas; en la vista jerárquica, curvas que pasan por el centro de cada departamento y, si son
@@ -472,6 +496,15 @@
       const nodos = ctx.nodes.filter((n) => conNombre.has(n.id)).map((n) => ({ x: n.x, y: n.y, r: radius(n) + 3 }));
       items.sort((a, b) => (b.n.id === ctx.state.selected) - (a.n.id === ctx.state.selected) || radius(b.n) - radius(a.n));
       const puestos = [], LH = 12;
+      // obstáculos fijos, que pesan más que otro nombre: estrellas de T5 (símbolo y etiqueta) y nombres de departamento
+      const fijos = [];
+      if (ctx.tema) gStar.selectAll("g.star").each((s) => {
+        if (s.x == null) return;
+        fijos.push(starBox(s), [s.x - 14, s.y - 14, s.x + 14, s.y + 14]);
+      });
+      gZone.selectAll("text").each(function () {
+        try { const b = this.getBBox(); if (b.width) fijos.push([b.x, b.y, b.x + b.width, b.y + b.height]); } catch (e) { /* sin layout */ }
+      });
       const choca = (b1, b2) => Math.max(0, Math.min(b1[2], b2[2]) - Math.max(b1[0], b2[0])) * Math.max(0, Math.min(b1[3], b2[3]) - Math.max(b1[1], b2[1]));
       const tapaNodo = (bx) => nodos.reduce((s, c) => {
         const dx = Math.max(bx[0] - c.x, 0, c.x - bx[2]), dy = Math.max(bx[1] - c.y, 0, c.y - bx[3]);
@@ -493,6 +526,7 @@
             const bx = [x0 - 2, y - LH + 2, x0 + w + 2, y + 3];
             let sc = i++ * 0.5;
             for (const q of puestos) sc += choca(bx, q) * 4;
+            for (const q of fijos) sc += choca(bx, q) * 20;
             sc += tapaNodo(bx) * 60;
             if (bx[0] < 0 || bx[2] > W || bx[1] < 0 || bx[3] > H) sc += 500;
             if (sc < bestS) { bestS = sc; best = { x, y, an, bx }; }
@@ -620,8 +654,11 @@
     // ---------- API ----------
     function centerOn(id) {
       const n = ctx.byId.get(id); if (!n) return;
-      const k = Math.max(1.4, d3.zoomTransform(svg.node()).k);
-      svg.transition().duration(650).call(zoom.transform, d3.zoomIdentity.translate(W / 2 - k * n.x, H / 2 - k * n.y).scale(k));
+      // zoom según el tamaño del nodo: que su foto se vea de ~36 px de radio (los chicos se acercan más), sin
+      // acercar tanto que se pierda su vecindario; si ya había más zoom, se mantiene
+      const k = Math.max(d3.zoomTransform(svg.node()).k, Math.min(3, Math.max(1.6, 30 / radius(n))));
+      // centrado en el área libre (a la derecha de la leyenda en pantallas anchas)
+      svg.transition().duration(650).call(zoom.transform, d3.zoomIdentity.translate(cx() - k * n.x, cy() - k * n.y).scale(k));
     }
     function resetZoom() { svg.transition().duration(500).call(zoom.transform, d3.zoomIdentity); }
     function highlightPair(a, b) {

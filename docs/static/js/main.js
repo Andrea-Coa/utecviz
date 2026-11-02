@@ -203,7 +203,7 @@
     rank(m) { state.rankMode = m; renderPanel(); },
     potRank(m) { state.potRank = m; computePairs(); render(0); },
     hoverPair(a, b) { if (a) net.highlightPair(a, b); else net.applyStyles(false); },
-    clearTema() { setTema(null); state.selected = null; net.resetZoom(); render(0); },   // vuelve a la red completa
+    clearTema() { setTema(null); state.selected = null; net.resetZoom(); render(0.4); },   // vuelve a la red completa (y a los tamaños normales)
   };
   const net = UV.createNetwork(ctx, handlers);
 
@@ -363,7 +363,8 @@
     stop(); setPotential(false); state.selected = null;
     setTema({ q, cargando: true }); render(0);
     let mostrado = false;   // ya hay un resultado precalculado en pantalla
-    const mostrar = (r) => { setTema(r); if (!mostrado) net.resetZoom(); mostrado = true; render(0); };
+    // los nodos cambian de tamaño: se recalcula el layout (colisión y anillos de la vista jerárquica) para que no se enciman
+    const mostrar = (r) => { setTema(r); if (!mostrado) net.resetZoom(); mostrado = true; render(0.4); };
     const respaldo = setTimeout(async () => {
       const a = await aproximado(q);
       if (a && vigente() && state.tema && !state.tema.candidatos) mostrar({ ...a, esperando: true });
